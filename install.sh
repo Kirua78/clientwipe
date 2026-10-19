@@ -13,7 +13,9 @@ fi
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "==> Installation du paquet clientwipe"
-pip install "$REPO_DIR"
+# --break-system-packages : installation systeme assumee (PEP 668), ce
+# script etant lui-meme l'outil d'installation systeme dedie a ClientWipe.
+pip install --break-system-packages "$REPO_DIR"
 
 echo "==> Creation des repertoires de configuration"
 install -d -m 755 /etc/clientwipe
