@@ -32,6 +32,25 @@ def test_generate_certificate_reports_pass_and_writes_files(tmp_path):
     assert "SANITISATION VALIDEE" in Path(result["html_path"]).read_text(encoding="utf-8")
 
 
+def test_generate_certificate_includes_snapshot_status(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / ".bash_history").write_text("ssh root@10.0.0.1", encoding="utf-8")
+
+    config = Config(targets=[SanitizeTarget(name="history", patterns=[".bash_history"])], passes=1)
+    sanitize_report = sanitize(root, config)
+    verify_report = verify(root, config)
+
+    snapshot = {"attempted": True, "created": True, "comment": "avant sanitisation", "error": None}
+    result = generate_certificate(sanitize_report, verify_report, tmp_path / "certificates", snapshot=snapshot)
+
+    payload = json.loads(Path(result["json_path"]).read_text(encoding="utf-8"))
+    assert payload["pre_snapshot"] == snapshot
+
+    html = Path(result["html_path"]).read_text(encoding="utf-8")
+    assert "avant sanitisation" in html
+
+
 def test_generate_certificate_reports_failure_when_residual_file_remains(tmp_path):
     root = tmp_path / "root"
     root.mkdir()

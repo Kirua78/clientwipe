@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import sys
@@ -12,6 +13,7 @@ from .certificate import generate_certificate
 from .config import Config
 from .imaging import restore_golden_image
 from .sanitize import sanitize
+from .snapshot import create_snapshot
 from .usb_trigger import is_allowed
 from .verify import verify
 
@@ -25,17 +27,41 @@ def _is_safe_root(root: Path) -> bool:
     return resolved.name == SANDBOX_DIR_NAME and "demo" in resolved.parts
 
 
-def _run_pipeline(root: Path, config: Config, out_dir: Path, gpg_key_id: Optional[str], operator: Optional[str]) -> dict:
+def _run_pipeline(
+    root: Path,
+    config: Config,
+    out_dir: Path,
+    gpg_key_id: Optional[str],
+    operator: Optional[str],
+    take_snapshot: bool = False,
+) -> dict:
+    snapshot_result = None
+    if take_snapshot:
+        snapshot_result = dataclasses.asdict(create_snapshot(f"clientwipe: avant sanitisation de {root}"))
+
     sanitize_report = sanitize(root, config)
     verify_report = verify(root, config)
     certificate = generate_certificate(
-        sanitize_report, verify_report, out_dir, gpg_key_id=gpg_key_id, operator=operator,
+        sanitize_report, verify_report, out_dir,
+        gpg_key_id=gpg_key_id, operator=operator, snapshot=snapshot_result,
     )
     return {
         "sanitize": sanitize_report.to_dict(),
         "verify": verify_report.to_dict(),
         "certificate": certificate,
+        "snapshot": snapshot_result,
     }
+
+
+def _print_snapshot_status(snapshot_result: Optional[dict]) -> None:
+    if snapshot_result is None:
+        return
+    if snapshot_result["created"]:
+        print("Snapshot Timeshift: OK")
+    elif snapshot_result["attempted"]:
+        print(f"Snapshot Timeshift: ECHEC ({snapshot_result['error']})")
+    else:
+        print(f"Snapshot Timeshift: non disponible ({snapshot_result['error']})")
 
 
 def cmd_demo(args: argparse.Namespace) -> int:
@@ -58,7 +84,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 2
 
     config = Config.load(Path(args.config))
-    result = _run_pipeline(root, config, Path(args.out_dir), args.gpg_key, args.operator)
+    result = _run_pipeline(root, config, Path(args.out_dir), args.gpg_key, args.operator, take_snapshot=args.snapshot)
+    _print_snapshot_status(result["snapshot"])
     print(f"Fichiers effaces: {result['sanitize']['total_files_wiped']}")
     print(f"Verification: {'OK' if result['verify']['passed'] else 'ECHEC'}")
     print(f"Certificat: {result['certificate']['json_path']}")
@@ -85,7 +112,11 @@ def cmd_trigger(args: argparse.Namespace) -> int:
             return 0
 
     config = Config.load(Path(args.config))
-    result = _run_pipeline(Path(args.root), config, Path(args.out_dir), args.gpg_key, args.operator)
+    result = _run_pipeline(
+        Path(args.root), config, Path(args.out_dir), args.gpg_key, args.operator,
+        take_snapshot=not args.skip_snapshot,
+    )
+    _print_snapshot_status(result["snapshot"])
     print(f"Certificat: {result['certificate']['json_path']}")
     return 0 if result["verify"]["passed"] else 1
 
@@ -119,6 +150,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--gpg-key", default=None, help="Key id GPG pour signer le certificat (optionnel)")
     p_run.add_argument("--operator", default=None)
     p_run.add_argument("--yes", action="store_true", help="Confirme une sanitisation hors bac a sable")
+    p_run.add_argument(
+        "--snapshot", action="store_true",
+        help="Prend un snapshot Timeshift du systeme avant la sanitisation (necessite timeshift installe)",
+    )
     p_run.set_defaults(func=cmd_run)
 
     p_verify = subparsers.add_parser("verify", help="Verifie l'absence de residus sans rien effacer")
@@ -135,6 +170,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_trigger.add_argument("--gpg-key", default=None)
     p_trigger.add_argument("--operator", default=None)
     p_trigger.add_argument("--yes", action="store_true", help="Ignore la confirmation interactive (usage non surveille)")
+    p_trigger.add_argument(
+        "--skip-snapshot", action="store_true",
+        help="Desactive le snapshot Timeshift automatique (pris par defaut avant chaque sanitisation declenchee par cle USB)",
+    )
     p_trigger.set_defaults(func=cmd_trigger)
 
     p_reset = subparsers.add_parser("reset", help="Restaure une image golden via Clonezilla (mode avance, optionnel)")

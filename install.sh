@@ -39,6 +39,13 @@ cp "$REPO_DIR/systemd/clientwipe-trigger@.service" /etc/systemd/system/clientwip
 udevadm control --reload-rules
 systemctl daemon-reload
 
+if ! command -v timeshift >/dev/null 2>&1; then
+  echo "==> Timeshift n'est pas installe : le snapshot automatique avant"
+  echo "    sanitisation (trigger) sera ignore sans bloquer l'outil."
+  echo "    Pour l'activer : sudo apt install timeshift (puis configurez-le"
+  echo "    une premiere fois avec 'sudo timeshift --setup' avant le test)."
+fi
+
 cat <<'EOF'
 
 Installation terminee.

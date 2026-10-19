@@ -41,6 +41,7 @@ code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; }}
 <li>Duree : {duration_seconds} s</li>
 <li>Genere le : {generated_at}</li>
 <li>Version ClientWipe : {version}</li>
+<li>Snapshot Timeshift avant sanitisation : {snapshot_line}</li>
 <li>Empreinte SHA-256 du rapport : <code>{sha256}</code></li>
 </ul>
 <h2>Detail par cible</h2>
@@ -80,12 +81,23 @@ def _gpg_sign(json_path: Path, key_id: Optional[str]) -> Optional[Path]:
     return sig_path
 
 
+def _snapshot_line(snapshot: Optional[dict]) -> str:
+    if snapshot is None:
+        return "non demande"
+    if snapshot.get("created"):
+        return f"OK (\"{snapshot.get('comment')}\")"
+    if snapshot.get("attempted"):
+        return f"ECHEC ({snapshot.get('error')})"
+    return f"non disponible ({snapshot.get('error')})"
+
+
 def generate_certificate(
     sanitize_report: SanitizeReport,
     verify_report: VerificationReport,
     out_dir: Path,
     gpg_key_id: Optional[str] = None,
     operator: Optional[str] = None,
+    snapshot: Optional[dict] = None,
 ) -> dict:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -99,6 +111,7 @@ def generate_certificate(
         "hostname": socket.gethostname(),
         "operator": operator or getpass.getuser(),
         "generated_at": generated_at,
+        "pre_snapshot": snapshot,
         "sanitize": sanitize_report.to_dict(),
         "verify": verify_report.to_dict(),
         "overall_passed": verify_report.passed,
@@ -123,6 +136,7 @@ def generate_certificate(
             duration_seconds=sanitize_report.duration_seconds,
             generated_at=generated_at,
             version=__version__,
+            snapshot_line=_snapshot_line(snapshot),
             sha256=sha256,
             rows=_build_rows(sanitize_report, verify_report),
         ),
