@@ -1,0 +1,10 @@
+# ClientWipe - declenchement par cle USB dediee.
+#
+# Cette regle ne fait QUE demarrer le service clientwipe-trigger@.service
+# pour toute cle USB presentant un numero de serie: elle n'autorise rien
+# par elle-meme. Le filtrage par allow-list se fait cote Python
+# (clientwipe/usb_trigger.py), en defense en profondeur: une cle non
+# autorisee demarre le service, qui refuse ensuite toute action et se
+# termine immediatement.
+ACTION=="add", SUBSYSTEM=="usb", ENV{ID_SERIAL_SHORT}=="?*", \
+    TAG+="systemd", ENV{SYSTEMD_WANTS}+="clientwipe-trigger@$env{ID_SERIAL_SHORT}.service"

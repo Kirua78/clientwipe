@@ -1,0 +1,15 @@
+[Unit]
+Description=ClientWipe - sanitisation declenchee par cle USB (serial=%i)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+# %i = numero de serie de la cle USB (ID_SERIAL_SHORT), fourni par la regle udev.
+# Adaptez --root a l'emplacement reel du poste/profil de travail pentest.
+ExecStart=/usr/local/bin/clientwipe trigger \
+    --serial %i \
+    --allowlist /etc/clientwipe/allowed_usb_serials.txt \
+    --config /etc/clientwipe/sanitize_targets.yaml \
+    --root /home/pentest
+StandardOutput=journal
+StandardError=journal
