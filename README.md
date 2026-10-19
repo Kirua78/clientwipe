@@ -46,6 +46,14 @@ flowchart LR
 - **Verification independante** : un second passage re-scanne les mêmes
   cibles apres effacement pour detecter tout residu, au lieu de supposer que
   l'effacement a reussi.
+- **Snapshot Timeshift automatique** : avant toute sanitisation reelle, le
+  declenchement par cle USB (`trigger`) prend par defaut un snapshot
+  Timeshift du systeme (`--skip-snapshot` pour desactiver) ; la commande
+  manuelle `run` peut faire de meme avec `--snapshot`. Le resultat
+  (reussite/echec/non disponible) est trace dans le certificat genere, pour
+  toujours savoir si un point de restauration existait avant l'operation.
+  Si Timeshift n'est pas installe, l'outil continue sans bloquer la
+  sanitisation -- c'est un filet de securite, pas une dependance obligatoire.
 - **Certificat d'audit** : rapport horodate (JSON + HTML) avec poste,
   operateur, methode, duree, resultat de verification et empreinte SHA-256 ;
   signature GPG optionnelle si une cle est disponible sur le poste.
@@ -114,6 +122,12 @@ d'evenements udev. Pour le valider sans aucun risque :
    udevadm info --query=property --name=/dev/sdX1 | grep ID_SERIAL_SHORT
    echo "<numero-de-serie>" | sudo tee -a /etc/clientwipe/allowed_usb_serials.txt
    ```
+   Notez que ce snapshot (etape 1) sert a *vous*, le testeur, a rejouer le
+   scenario plusieurs fois depuis un etat propre. Il est independant du
+   snapshot Timeshift que l'outil prend *lui-meme* automatiquement avant
+   chaque sanitisation declenchee par cle USB (voir "Fonctionnalites" ci-dessus) --
+   les deux se completent : l'un protege vos essais, l'autre protege chaque
+   execution reelle en production.
 5. **Branchez la cle** et suivez le declenchement en direct :
    ```bash
    journalctl -u 'clientwipe-trigger@*' -f
