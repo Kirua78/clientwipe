@@ -1,0 +1,36 @@
+# Emplacements sanitises entre deux missions de pentest.
+# Les chemins sont des patterns glob relatifs a la racine passee via --root.
+# Adaptez cette liste a vos outils et a votre arborescence reelle.
+
+passes: 3
+
+targets:
+  - name: burp-projects
+    patterns:
+      - "**/*.burp"
+      - ".BurpSuite/**"
+
+  - name: ssh-keys
+    patterns:
+      - ".ssh/id_*"
+      - ".ssh/known_hosts"
+
+  - name: vpn-configs
+    patterns:
+      - "**/*.ovpn"
+      - ".openvpn/**"
+
+  - name: shell-history
+    patterns:
+      - ".bash_history"
+      - ".zsh_history"
+
+  - name: browser-profiles
+    patterns:
+      - ".mozilla/firefox/**"
+      - ".config/google-chrome/**"
+
+  - name: temp-and-downloads
+    patterns:
+      - "Downloads/**"
+      - "tmp/**"

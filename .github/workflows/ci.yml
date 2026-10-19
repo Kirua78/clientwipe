@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package (editable, with dev dependencies)
+        run: pip install -e ".[dev]"
+
+      - name: Run unit tests
+        run: pytest -v
+
+      - name: End-to-end smoke test (demo sandbox)
+        run: |
+          clientwipe demo --path demo/sandbox
+          clientwipe run --root demo/sandbox --config config/sanitize_targets.example.yaml --yes
+          clientwipe verify --root demo/sandbox --config config/sanitize_targets.example.yaml
