@@ -48,6 +48,18 @@ if ! command -v timeshift >/dev/null 2>&1; then
   echo "    une premiere fois avec 'sudo timeshift --setup' avant le test)."
 fi
 
+if ! command -v cryptsetup >/dev/null 2>&1; then
+  echo "==> cryptsetup n'est pas installe : la detection/destruction de cle"
+  echo "    LUKS sera ignoree (mode full-reset: reimagage seul, sans erasure"
+  echo "    cryptographique). Pour l'activer : sudo apt install cryptsetup."
+fi
+
+if ! command -v grub-reboot >/dev/null 2>&1; then
+  echo "==> grub-reboot n'est pas disponible : le mode full-reset ne pourra"
+  echo "    pas programmer le redemarrage vers l'environnement de"
+  echo "    reimagage. Generalement fourni par le paquet grub2-common."
+fi
+
 cat <<'EOF'
 
 Installation terminee.
@@ -55,8 +67,9 @@ Installation terminee.
 Prochaines etapes (voir README.md > "Test en conditions reelles") :
   1. Ajoutez le numero de serie de votre cle USB de test dans
      /etc/clientwipe/allowed_usb_serials.txt
-  2. Adaptez /etc/clientwipe/sanitize_targets.yaml et le --root du service
-     systemd a votre environnement de test.
+  2. Adaptez /etc/clientwipe/sanitize_targets.yaml : section "full_reset"
+     (device, boot_entry) pour le mode par defaut, ou "targets" si vous
+     utilisez --mode targeted.
   3. Branchez la cle USB autorisee et suivez les logs avec :
      journalctl -u 'clientwipe-trigger@*' -f
 EOF

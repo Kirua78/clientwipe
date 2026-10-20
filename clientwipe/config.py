@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import yaml
 
@@ -16,9 +16,19 @@ class SanitizeTarget:
 
 
 @dataclass(frozen=True)
+class FullResetConfig:
+    """Where to perform a full disk reset: which block device to check for
+    LUKS/erase, and which GRUB entry to boot into for the actual reimage."""
+
+    device: str
+    boot_entry: str
+
+
+@dataclass(frozen=True)
 class Config:
     targets: List[SanitizeTarget]
     passes: int = 3
+    full_reset: Optional[FullResetConfig] = None
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -28,6 +38,15 @@ class Config:
             SanitizeTarget(name=t["name"], patterns=list(t["patterns"]))
             for t in raw.get("targets", [])
         ]
-        if not targets:
-            raise ValueError(f"No sanitize targets defined in {path}")
-        return cls(targets=targets, passes=passes)
+
+        full_reset = None
+        full_reset_raw = raw.get("full_reset")
+        if full_reset_raw:
+            full_reset = FullResetConfig(
+                device=full_reset_raw["device"],
+                boot_entry=full_reset_raw["boot_entry"],
+            )
+
+        if not targets and full_reset is None:
+            raise ValueError(f"No sanitize targets or full_reset config defined in {path}")
+        return cls(targets=targets, passes=passes, full_reset=full_reset)

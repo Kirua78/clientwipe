@@ -1,6 +1,19 @@
-# Emplacements sanitises entre deux missions de pentest.
-# Les chemins sont des patterns glob relatifs a la racine passee via --root.
-# Adaptez cette liste a vos outils et a votre arborescence reelle.
+# Configuration ClientWipe.
+#
+# "full_reset" pilote le mode par defaut du declenchement par cle USB
+# (clientwipe trigger) : destruction de la cle LUKS si le peripherique en
+# est equipe, puis reimagage complet au prochain demarrage. Adaptez
+# "device" a la partition racine reelle du poste et "boot_entry" au nom
+# exact de l'entree GRUB qui lance l'environnement de restauration
+# Clonezilla/Rescuezilla (a preparer en amont sur chaque poste).
+full_reset:
+  device: /dev/sda3
+  boot_entry: "Clonezilla Recovery"
+
+# "targets" et "passes" ne servent qu'au mode --mode targeted (effacement
+# cible fichier par fichier, sans reimagage/redemarrage) : les chemins sont
+# des patterns glob relatifs a la racine passee via --root. Adaptez cette
+# liste a vos outils et a votre arborescence reelle.
 
 passes: 3
 
