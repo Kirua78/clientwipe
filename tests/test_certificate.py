@@ -89,9 +89,11 @@ def test_generate_full_wipe_certificate_reports_pass(tmp_path):
     assert payload["operation"] == "full-reset"
     assert payload["operator"] == "test-operator"
     assert payload["full_wipe"]["device"] == "/dev/sda3"
+    assert "Purge" in payload["nist_800_88_level"]
 
     html = Path(result["html_path"]).read_text(encoding="utf-8")
     assert "REMISE A ZERO PROGRAMMEE" in html
+    assert "Purge" in html
 
 
 def test_generate_full_wipe_certificate_reports_failure_when_luks_erase_fails(tmp_path):
@@ -109,3 +111,20 @@ def test_generate_full_wipe_certificate_reports_failure_when_luks_erase_fails(tm
     assert result["overall_passed"] is False
     html = Path(result["html_path"]).read_text(encoding="utf-8")
     assert "ECHEC" in html
+
+
+def test_generate_full_wipe_certificate_reports_clear_level_without_luks(tmp_path):
+    report = FullWipeReport(
+        device="/dev/sda3",
+        boot_entry="Clonezilla Recovery",
+        luks_detected=False,
+        header_backup=None,
+        luks_erase=None,
+        reboot_scheduled=RebootScheduleResult(boot_entry="Clonezilla Recovery", attempted=True, scheduled=True),
+    )
+
+    result = generate_full_wipe_certificate(report, tmp_path / "certificates")
+
+    payload = json.loads(Path(result["json_path"]).read_text(encoding="utf-8"))
+    assert "Clear" in payload["nist_800_88_level"]
+    assert "Purge" not in payload["nist_800_88_level"]

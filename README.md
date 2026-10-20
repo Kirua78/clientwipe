@@ -50,9 +50,13 @@ flowchart LR
   redemarrage vers un environnement de recuperation dedie qui reimage le
   disque entier depuis une image de reference (voir `clientwipe/full_wipe.py`,
   `clientwipe/luks.py`). Resultat : tous les compartiments du poste sont
-  couverts, pas seulement le profil utilisateur. Si le disque n'est pas
-  chiffre, l'etape de destruction de cle est simplement ignoree et l'outil
-  passe directement au reimagage.
+  couverts, pas seulement le profil utilisateur. Deploiement vise : la cle
+  USB elle-meme embarque l'image Kali de reference (64 Go+ recommande) pour
+  que l'environnement de recuperation puisse reimager sans dependance
+  reseau. Si le disque n'est pas chiffre, l'etape de destruction de cle est
+  simplement ignoree et l'outil passe directement au reimagage ; le niveau
+  de garantie atteint ("Purge" ou "Clear") est trace explicitement dans le
+  certificat genere, jamais suppose equivalent.
 - **Sauvegarde de l'en-tete LUKS avant destruction (optionnelle, recommandee)** :
   Timeshift ne protege pas contre une destruction de cle LUKS : son
   snapshot est stocke *dans* le volume chiffre, donc perdu avec le reste.
@@ -231,6 +235,26 @@ et d'ISO/IEC 27001 sur la protection de l'information :
 Chaque execution produit une preuve exploitable en audit interne ou externe
 (exigences contractuelles client, traçabilite qualite) : qui, quand, quoi,
 avec quel resultat.
+
+## Pourquoi pas de sauvegarde complete avant effacement
+
+Deux approches ont ete evaluees pour le mode `full-reset` :
+- **copier integralement le disque avant d'effacer**, pour pouvoir tout
+  restaurer en cas d'erreur. Mais sur un poste physique (pas une VM avec
+  snapshot hyperviseur instantane), copier un disque entier est une
+  operation d'E/S lente (potentiellement des heures selon la taille et la
+  vitesse du support), et la copie elle-meme, contenant toutes les donnees
+  client, devient un nouvel actif sensible a proteger ;
+- **un effacement rapide et definitif une fois confirme**, c'est le choix
+  retenu. La protection contre une erreur se fait *avant* l'effacement (le
+  numero de serie USB doit correspondre a l'allow-list, puis un humain doit
+  cliquer "Autoriser" sur une fenetre explicite), pas apres coup.
+
+La seule exception : la sauvegarde de l'en-tete LUKS (voir ci-dessus), qui
+est rapide (quelques Ko) et protege une fenetre courte, le temps ou la cle a
+ete detruite par erreur mais le disque n'a pas encore ete reimage. Une fois le
+reimagage lance, cette sauvegarde, comme tout le reste, ne permet plus de
+revenir en arriere : c'est assume.
 
 ## Limitations connues
 

@@ -77,6 +77,7 @@ code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; }}
 <li>Operateur : <code>{operator}</code></li>
 <li>Peripherique : <code>{device}</code></li>
 <li>Chiffrement LUKS detecte : {luks_detected}</li>
+<li>Niveau NIST SP 800-88 atteint : <strong>{nist_level}</strong></li>
 <li>Sauvegarde de l'en-tete LUKS : {header_backup_line}</li>
 <li>Cle LUKS detruite : {luks_erased}</li>
 <li>Entree GRUB de reimagage programmee : {boot_entry} ({reboot_scheduled})</li>
@@ -203,6 +204,12 @@ def generate_full_wipe_certificate(
     generated_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     timestamp_slug = time.strftime("%Y%m%d-%H%M%S")
 
+    nist_level = (
+        "Purge (effacement cryptographique, destruction de cle LUKS)"
+        if report.luks_detected else
+        "Clear (reimagage complet, pas de chiffrement a detruire sur ce poste)"
+    )
+
     payload = {
         "tool": "clientwipe",
         "version": __version__,
@@ -210,6 +217,7 @@ def generate_full_wipe_certificate(
         "hostname": socket.gethostname(),
         "operator": operator or getpass.getuser(),
         "generated_at": generated_at,
+        "nist_800_88_level": nist_level,
         "pre_snapshot": snapshot,
         "full_wipe": report.to_dict(),
         "overall_passed": report.passed,
@@ -239,6 +247,7 @@ def generate_full_wipe_certificate(
             operator=payload["operator"],
             device=report.device,
             luks_detected="oui" if report.luks_detected else "non",
+            nist_level=nist_level,
             header_backup_line=header_backup_line,
             luks_erased=luks_erased,
             boot_entry=report.boot_entry,
