@@ -27,8 +27,8 @@ def create_snapshot(comment: str) -> SnapshotResult:
     This is a safety net baked into the tool itself (distinct from the
     snapshot a tester takes manually before trying the tool on a VM): every
     real `run`/`trigger` execution can leave its own restore point behind.
-    No-ops safely when Timeshift isn't installed or configured -- expected
-    on the demo sandbox and in CI, where this is simply not applicable.
+    No-ops safely when Timeshift isn't installed or configured, which is
+    expected on the demo sandbox and in CI, where this doesn't apply.
     """
     if not timeshift_available():
         return SnapshotResult(

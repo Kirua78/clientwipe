@@ -38,8 +38,8 @@ flowchart LR
   le numero de serie figure dans une allow-list ; le numero de serie est
   revalide cote Python (defense en profondeur). Pas d'autorun aveugle : une
   cle non enregistree ne declenche rien. Le service systemd tourne sans
-  terminal, donc l'allow-list -- pas une confirmation humaine -- est
-  l'autorisation reelle du declenchement automatique ; `clientwipe run`
+  terminal : c'est donc l'allow-list, et non une confirmation humaine, qui
+  constitue l'autorisation reelle du declenchement automatique ; `clientwipe run`
   (usage manuel en ligne de commande) garde lui une confirmation
   interactive avant toute action destructive, et echoue proprement
   (sans crash) si elle est lancee sans terminal disponible.
@@ -57,7 +57,7 @@ flowchart LR
   (reussite/echec/non disponible) est trace dans le certificat genere, pour
   toujours savoir si un point de restauration existait avant l'operation.
   Si Timeshift n'est pas installe, l'outil continue sans bloquer la
-  sanitisation -- c'est un filet de securite, pas une dependance obligatoire.
+  sanitisation : c'est un filet de securite, pas une dependance obligatoire.
 - **Certificat d'audit** : rapport horodate (JSON + HTML) avec poste,
   operateur, methode, duree, resultat de verification et empreinte SHA-256 ;
   signature GPG optionnelle si une cle est disponible sur le poste.
@@ -79,7 +79,7 @@ pip install -e ".[dev]"
 # Cree un faux poste de pentest avec des donnees factices
 clientwipe demo --path demo/sandbox
 
-# Sanitise, verifie, genere un certificat -- uniquement sur le bac a sable
+# Sanitise, verifie, genere un certificat (uniquement sur le bac a sable)
 clientwipe run --root demo/sandbox --config config/sanitize_targets.example.yaml
 
 # Ouvrez le certificat genere dans certificates/certificate-*.html
@@ -98,11 +98,11 @@ d'evenements udev. Pour le valider sans aucun risque :
 1. **Creez une VM Linux jetable** (Kali ou Debian minimal) via
    VirtualBox/KVM/Proxmox, et prenez un snapshot juste apres l'installation
    de base. Deux options, a combiner si besoin :
-   - un **snapshot hyperviseur** (VirtualBox/KVM/Proxmox) si disponible --
-     le plus simple, restaure l'etat complet de la VM en un clic ;
+   - un **snapshot hyperviseur** (VirtualBox/KVM/Proxmox) si disponible :
+     le plus simple, il restaure l'etat complet de la VM en un clic ;
    - **Timeshift**, installe dans la VM elle-meme
      (`sudo apt install timeshift`), pour un snapshot au niveau du systeme
-     de fichiers (rsync ou BTRFS) -- utile si l'hyperviseur ne permet pas de
+     de fichiers (rsync ou BTRFS), utile si l'hyperviseur ne permet pas de
      snapshot facile, ou pour multiplier les points de restauration sans
      repasser par la console de l'hyperviseur :
      ```bash
@@ -129,8 +129,8 @@ d'evenements udev. Pour le valider sans aucun risque :
    Notez que ce snapshot (etape 1) sert a *vous*, le testeur, a rejouer le
    scenario plusieurs fois depuis un etat propre. Il est independant du
    snapshot Timeshift que l'outil prend *lui-meme* automatiquement avant
-   chaque sanitisation declenchee par cle USB (voir "Fonctionnalites" ci-dessus) --
-   les deux se completent : l'un protege vos essais, l'autre protege chaque
+   chaque sanitisation declenchee par cle USB (voir "Fonctionnalites" ci-dessus).
+   Les deux se completent : l'un protege vos essais, l'autre protege chaque
    execution reelle en production.
 5. **Branchez la cle** et suivez le declenchement en direct :
    ```bash
@@ -145,7 +145,7 @@ d'evenements udev. Pour le valider sans aucun risque :
 
 Limite assumee : le mode `reset` (restauration d'image via Clonezilla) n'est
 pas demontrable dans ce depot (il necessite une vraie infrastructure
-d'imaging) -- il est donc uniquement couvert par des tests unitaires avec
+d'imaging), il est donc uniquement couvert par des tests unitaires avec
 `subprocess` simule, et documente comme mode avance a adapter en entreprise.
 
 ## Configuration
@@ -180,4 +180,4 @@ exigences contractuelles client) : qui, quand, quoi, avec quel resultat.
 
 ## Licence
 
-MIT -- voir [LICENSE](LICENSE).
+MIT. Voir [LICENSE](LICENSE).
