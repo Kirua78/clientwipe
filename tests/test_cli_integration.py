@@ -41,3 +41,32 @@ def test_run_refuses_non_sandbox_root_without_yes(tmp_path, monkeypatch, capsys)
 
     assert exit_code == 2
     assert "ATTENTION" in capsys.readouterr().err
+
+
+def test_trigger_without_tty_fails_safe_instead_of_crashing(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+
+    allowlist_path = tmp_path / "allowed.txt"
+    allowlist_path.write_text("AB12CD34\n", encoding="utf-8")
+
+    config_path = tmp_path / "sanitize_targets.yaml"
+    config_path.write_text(
+        "passes: 1\ntargets:\n  - name: ssh\n    patterns: ['.ssh/id_*']\n",
+        encoding="utf-8",
+    )
+
+    def raise_eof(prompt=""):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", raise_eof)
+
+    exit_code = main([
+        "trigger",
+        "--serial", "AB12CD34",
+        "--allowlist", str(allowlist_path),
+        "--config", str(config_path),
+        "--root", str(tmp_path),
+    ])
+
+    assert exit_code == 1
+    assert "terminal interactif" in capsys.readouterr().err

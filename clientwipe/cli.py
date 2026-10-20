@@ -106,7 +106,19 @@ def cmd_trigger(args: argparse.Namespace) -> int:
         return 1
 
     if not args.yes:
-        answer = input(f"Cle USB autorisee detectee. Lancer la sanitisation de {args.root} ? [y/N] ")
+        # No TTY (systemd service, cron, ...): fail safe instead of crashing
+        # on EOFError -- the serial allow-list is the real authorization
+        # boundary for the USB-triggered path, confirmation is only for
+        # interactive use.
+        try:
+            answer = input(f"Cle USB autorisee detectee. Lancer la sanitisation de {args.root} ? [y/N] ")
+        except EOFError:
+            print(
+                "Pas de terminal interactif pour confirmer -- utilisez --yes "
+                "pour le declenchement automatique (service systemd).",
+                file=sys.stderr,
+            )
+            return 1
         if answer.strip().lower() != "y":
             print("Annule par l'operateur.")
             return 0
