@@ -34,3 +34,11 @@ targets:
     patterns:
       - "Downloads/**"
       - "tmp/**"
+
+  # Un pattern commencant par "/" est absolu : il est resolu depuis la
+  # racine du systeme de fichiers, independamment de --root. Utile pour des
+  # emplacements connus hors du profil utilisateur (outils installes dans
+  # /opt, point de montage d'un disque de loot...).
+  # - name: opt-tools
+  #   patterns:
+  #     - "/opt/pentest-tools/**"

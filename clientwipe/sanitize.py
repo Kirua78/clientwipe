@@ -99,9 +99,20 @@ def secure_delete_file(path: Path, passes: int = 3, use_shred: Optional[bool] = 
 
 
 def resolve_target_files(root: Path, target: SanitizeTarget) -> List[Path]:
+    """Resolve a target's glob patterns to actual files.
+
+    A pattern starting with "/" is absolute and resolved from the
+    filesystem root, independent of --root (for known sensitive locations
+    outside the user profile, e.g. "/opt/pentest-tools/**" or a mounted
+    loot drive). Any other pattern stays relative to --root, as before.
+    """
     files: List[Path] = []
     for pattern in target.patterns:
-        files.extend(p for p in root.glob(pattern) if p.is_file())
+        if pattern.startswith("/"):
+            base, relative_pattern = Path("/"), pattern.lstrip("/")
+        else:
+            base, relative_pattern = root, pattern
+        files.extend(p for p in base.glob(relative_pattern) if p.is_file())
     seen = set()
     unique: List[Path] = []
     for file_path in files:

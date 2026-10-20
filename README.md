@@ -49,7 +49,11 @@ flowchart LR
 - **Sanitisation ciblee** : effacement multi-passes (`shred` si disponible,
   sinon repli pur Python) des emplacements definis dans un fichier de
   configuration YAML (projets Burp, cles SSH, configs VPN, historique shell,
-  profils navigateurs, telechargements/temp).
+  profils navigateurs, telechargements/temp). Les patterns sont relatifs a
+  `--root` par defaut, mais un pattern commencant par `/` est resolu depuis
+  la racine du systeme de fichiers : utile pour des emplacements connus hors
+  du profil utilisateur (`/opt/pentest-tools/**`, un point de montage de
+  loot...).
 - **Verification independante** : un second passage re-scanne les mêmes
   cibles apres effacement pour detecter tout residu, au lieu de supposer que
   l'effacement a reussi.

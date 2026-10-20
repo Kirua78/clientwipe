@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from clientwipe.config import Config, SanitizeTarget
 from clientwipe.sanitize import resolve_target_files, sanitize, secure_delete_file
 
@@ -22,6 +26,21 @@ def test_resolve_target_files_matches_glob_pattern(tmp_path):
     files = resolve_target_files(tmp_path, target)
 
     assert files == [tmp_path / "sub" / "a.burp"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="absolute patterns use POSIX paths, this feature targets Linux deployments")
+def test_resolve_target_files_supports_absolute_pattern_outside_root(tmp_path):
+    root = tmp_path / "home" / "bycybadmin"
+    root.mkdir(parents=True)
+
+    outside = tmp_path / "opt" / "pentest-tools"
+    outside.mkdir(parents=True)
+    (outside / "loot.txt").write_text("x", encoding="utf-8")
+
+    target = SanitizeTarget(name="opt-tools", patterns=[f"{outside.as_posix()}/*.txt"])
+    files = resolve_target_files(root, target)
+
+    assert files == [outside / "loot.txt"]
 
 
 def test_sanitize_wipes_matching_files_only(tmp_path):
