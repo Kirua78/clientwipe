@@ -1,10 +1,11 @@
 import json
 from pathlib import Path
 
-from clientwipe.certificate import generate_certificate, generate_full_wipe_certificate
+from clientwipe.certificate import generate_certificate, generate_full_wipe_certificate, generate_live_wipe_certificate
 from clientwipe.config import Config, SanitizeTarget
 from clientwipe.full_wipe import FullWipeReport
-from clientwipe.imaging import RebootScheduleResult
+from clientwipe.imaging import ImagingResult, RebootScheduleResult
+from clientwipe.live_wipe import LiveWipeReport
 from clientwipe.luks import LuksEraseResult
 from clientwipe.sanitize import sanitize
 from clientwipe.verify import verify
@@ -128,3 +129,42 @@ def test_generate_full_wipe_certificate_reports_clear_level_without_luks(tmp_pat
     payload = json.loads(Path(result["json_path"]).read_text(encoding="utf-8"))
     assert "Clear" in payload["nist_800_88_level"]
     assert "Purge" not in payload["nist_800_88_level"]
+
+
+def test_generate_live_wipe_certificate_reports_pass(tmp_path):
+    report = LiveWipeReport(
+        device="/dev/sda",
+        image_name="golden-kali",
+        luks_detected=True,
+        header_backup=None,
+        luks_erase=LuksEraseResult(device="/dev/sda", attempted=True, erased=True),
+        imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+    )
+
+    result = generate_live_wipe_certificate(report, tmp_path / "certificates", operator="test-operator")
+
+    assert result["overall_passed"] is True
+    payload = json.loads(Path(result["json_path"]).read_text(encoding="utf-8"))
+    assert payload["operation"] == "live-wipe"
+    assert payload["live_wipe"]["image_name"] == "golden-kali"
+    assert "Purge" in payload["nist_800_88_level"]
+
+    html = Path(result["html_path"]).read_text(encoding="utf-8")
+    assert "REMISE A ZERO REUSSIE" in html
+
+
+def test_generate_live_wipe_certificate_reports_failure_when_imaging_fails(tmp_path):
+    report = LiveWipeReport(
+        device="/dev/sda",
+        image_name="golden-kali",
+        luks_detected=False,
+        header_backup=None,
+        luks_erase=None,
+        imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=1),
+    )
+
+    result = generate_live_wipe_certificate(report, tmp_path / "certificates")
+
+    assert result["overall_passed"] is False
+    html = Path(result["html_path"]).read_text(encoding="utf-8")
+    assert "ECHEC" in html

@@ -12,6 +12,7 @@ from typing import Optional
 
 from . import __version__
 from .full_wipe import FullWipeReport
+from .live_wipe import LiveWipeReport
 from .sanitize import SanitizeReport
 from .verify import VerificationReport
 
@@ -84,6 +85,42 @@ code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; }}
 <li>Genere le : {generated_at}</li>
 <li>Version ClientWipe : {version}</li>
 <li>Snapshot Timeshift avant operation : {snapshot_line}</li>
+<li>Empreinte SHA-256 du rapport : <code>{sha256}</code></li>
+</ul>
+</body>
+</html>
+"""
+
+
+LIVE_WIPE_HTML_TEMPLATE = """<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Certificat de remise a zero (cle autonome) - {hostname}</title>
+<style>
+body {{ font-family: -apple-system, "Segoe UI", sans-serif; max-width: 720px; margin: 2rem auto; color: #1a1a1a; }}
+h1 {{ font-size: 1.3rem; }}
+.status {{ display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: bold; }}
+.pass {{ background: #d4f7dc; color: #157347; }}
+.fail {{ background: #f8d7da; color: #842029; }}
+code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; }}
+</style>
+</head>
+<body>
+<h1>Certificat de remise a zero ClientWipe (cle autonome)</h1>
+<p><span class="status {status_class}">{status_label}</span></p>
+<ul>
+<li>Poste : <code>{hostname}</code></li>
+<li>Operateur : <code>{operator}</code></li>
+<li>Peripherique efface : <code>{device}</code></li>
+<li>Image de reference restauree : <code>{image_name}</code></li>
+<li>Chiffrement LUKS detecte : {luks_detected}</li>
+<li>Niveau NIST SP 800-88 atteint : <strong>{nist_level}</strong></li>
+<li>Sauvegarde de l'en-tete LUKS : {header_backup_line}</li>
+<li>Cle LUKS detruite : {luks_erased}</li>
+<li>Reimagage : {imaging_status}</li>
+<li>Genere le : {generated_at}</li>
+<li>Version ClientWipe : {version}</li>
 <li>Empreinte SHA-256 du rapport : <code>{sha256}</code></li>
 </ul>
 </body>
@@ -255,6 +292,85 @@ def generate_full_wipe_certificate(
             generated_at=generated_at,
             version=__version__,
             snapshot_line=_snapshot_line(snapshot),
+            sha256=sha256,
+        ),
+        encoding="utf-8",
+    )
+
+    signature_path = _gpg_sign(json_path, gpg_key_id)
+
+    return {
+        "json_path": str(json_path),
+        "html_path": str(html_path),
+        "signature_path": str(signature_path) if signature_path else None,
+        "sha256": sha256,
+        "overall_passed": payload["overall_passed"],
+    }
+
+
+def generate_live_wipe_certificate(
+    report: LiveWipeReport,
+    out_dir: Path,
+    gpg_key_id: Optional[str] = None,
+    operator: Optional[str] = None,
+) -> dict:
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    generated_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    timestamp_slug = time.strftime("%Y%m%d-%H%M%S")
+
+    nist_level = (
+        "Purge (effacement cryptographique, destruction de cle LUKS)"
+        if report.luks_detected else
+        "Clear (reimagage complet, pas de chiffrement a detruire sur ce poste)"
+    )
+
+    payload = {
+        "tool": "clientwipe",
+        "version": __version__,
+        "operation": "live-wipe",
+        "hostname": socket.gethostname(),
+        "operator": operator or getpass.getuser(),
+        "generated_at": generated_at,
+        "nist_800_88_level": nist_level,
+        "live_wipe": report.to_dict(),
+        "overall_passed": report.passed,
+    }
+
+    sha256 = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    payload["sha256"] = sha256
+
+    json_path = out_dir / f"live-wipe-certificate-{timestamp_slug}.json"
+    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    luks_erased = "n/a (pas de LUKS)"
+    if report.luks_detected:
+        luks_erased = "oui" if (report.luks_erase and report.luks_erase.erased) else "ECHEC"
+
+    header_backup_line = "non demandee"
+    if report.luks_detected and report.header_backup is not None:
+        hb = report.header_backup
+        header_backup_line = f"OK ({hb.backup_path})" if hb.backed_up else f"ECHEC ({hb.error})"
+
+    imaging_status = "OK" if (report.imaging.executed and report.imaging.returncode == 0) else "ECHEC"
+
+    html_path = out_dir / f"live-wipe-certificate-{timestamp_slug}.html"
+    html_path.write_text(
+        LIVE_WIPE_HTML_TEMPLATE.format(
+            hostname=payload["hostname"],
+            status_class="pass" if payload["overall_passed"] else "fail",
+            status_label="REMISE A ZERO REUSSIE" if payload["overall_passed"] else "ECHEC",
+            operator=payload["operator"],
+            device=report.device,
+            image_name=report.image_name,
+            luks_detected="oui" if report.luks_detected else "non",
+            nist_level=nist_level,
+            header_backup_line=header_backup_line,
+            luks_erased=luks_erased,
+            imaging_status=imaging_status,
+            generated_at=generated_at,
+            version=__version__,
             sha256=sha256,
         ),
         encoding="utf-8",

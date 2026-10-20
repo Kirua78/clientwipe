@@ -14,9 +14,25 @@ NIST SP 800-88 "Guidelines for Media Sanitization" et par l'esprit d'ISO
 27001 sur la protection de l'information).
 
 **ClientWipe** transforme cette etape manuelle en un geste simple et
-verifiable : on branche une cle USB dediee et, par defaut, le poste repart
-integralement a neuf, comme si un auditeur rallumait une machine jamais
-utilisee, tous compartiments compris, pas seulement le profil utilisateur.
+verifiable : on branche une cle USB dediee et le poste repart integralement
+a neuf, comme si un auditeur rallumait une machine jamais utilisee, tous
+compartiments compris, pas seulement le profil utilisateur.
+
+## Deux manieres de declencher ClientWipe
+
+- **Cle autonome bootable** (`clientwipe live-wipe`, le modele vise pour la
+  cle de production) : on redemarre le poste et on demarre directement sur
+  la cle USB, comme une cle Clonezilla ou Kali live. Aucune installation
+  prealable sur le poste cible n'est necessaire : la cle embarque tout
+  (l'outil, l'image Kali de reference). C'est l'operateur qui choisit de
+  booter sur cette cle precise qui constitue l'autorisation, donc pas de
+  liste blanche de numero de serie ni de fenetre graphique a gerer, une
+  simple confirmation tapee au clavier suffit.
+- **Declenchement automatique pendant que le poste tourne** (`clientwipe
+  trigger`, installe une fois via `install.sh`) : utile si on prefere que
+  le nettoyage se declenche sans redemarrer manuellement sur une cle, des
+  qu'une cle autorisee est branchee sur un poste deja equipe. Decrit en
+  detail plus bas.
 
 ## Architecture
 
@@ -41,6 +57,16 @@ flowchart LR
 
 ## Fonctionnalites
 
+- **`clientwipe live-wipe` (cle autonome bootable)** : point d'entree pense
+  pour tourner depuis un environnement demarre directement sur la cle USB
+  (voir `clientwipe/live_wipe.py`). Reutilise exactement la meme logique de
+  detection/destruction LUKS et de sauvegarde d'en-tete que le mode
+  declenche automatiquement, mais reimage **immediatement** (pas besoin de
+  programmer un redemarrage vers un environnement separe : l'environnement
+  live demarre sur la cle *est* deja cet environnement de recuperation).
+  Confirmation par simple saisie clavier (`OUI` en majuscules), pas de
+  fenetre graphique necessaire puisqu'un operateur est forcement present au
+  clavier pour avoir choisi de demarrer sur cette cle.
 - **Remise a zero complete (mode par defaut du declenchement USB)** : au
   branchement de la cle, l'outil detecte automatiquement si le disque est
   chiffre en LUKS. Si oui, il detruit les cles de chiffrement : un
@@ -221,6 +247,19 @@ targets:
       - ".ssh/known_hosts"
 ```
 
+`clientwipe live-wipe` (cle autonome bootable) ne lit pas ce fichier : il
+prend ses parametres directement en ligne de commande, puisqu'il est lance
+manuellement depuis la console de l'environnement live, pas par un service
+installe a l'avance :
+
+```bash
+clientwipe live-wipe \
+  --device /dev/sda \
+  --image golden-kali \
+  --images-repository /mnt/usb-data \
+  --header-backup-dir /mnt/usb-data/luks-headers
+```
+
 ## Conformite
 
 L'approche s'inspire de NIST SP 800-88 "Guidelines for Media Sanitization"
@@ -270,6 +309,11 @@ revenir en arriere : c'est assume.
   n'est configuree ou si `gpg` n'est pas installe.
 - Le declenchement udev/systemd est specifique a Linux ; voir la section
   "Test en conditions reelles" pour le valider sur une VM jetable.
+- `clientwipe live-wipe` (cle autonome bootable) a sa logique Python
+  validee par tests unitaires, mais l'image bootable elle-meme (construite
+  avec `live-build`, embarquant l'outil et une image Kali de reference)
+  n'est pas encore construite ni testee en conditions reelles dans ce
+  depot : c'est la prochaine etape de validation.
 
 ## Licence
 

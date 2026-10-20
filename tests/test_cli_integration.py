@@ -2,7 +2,7 @@ from pathlib import Path
 
 from clientwipe import cli
 from clientwipe.cli import main
-from clientwipe.imaging import RebootScheduleResult
+from clientwipe.imaging import ImagingResult, RebootScheduleResult
 from clientwipe.luks import LuksDetectionResult
 
 
@@ -177,3 +177,52 @@ def test_trigger_full_reset_no_auto_reboot_skips_reboot(tmp_path, monkeypatch, c
 
     assert exit_code == 0
     assert reboot_calls == []
+
+
+def test_live_wipe_requires_typed_confirmation(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "non merci")
+
+    exit_code = main([
+        "live-wipe",
+        "--device", "/dev/sda",
+        "--image", "golden-kali",
+        "--images-repository", str(tmp_path),
+    ])
+
+    assert exit_code == 0
+    assert "Annule" in capsys.readouterr().out
+
+
+def test_live_wipe_happy_path(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "OUI")
+
+    from clientwipe.live_wipe import LiveWipeReport
+    from clientwipe.luks import LuksEraseResult
+
+    fake_report = LiveWipeReport(
+        device="/dev/sda",
+        image_name="golden-kali",
+        luks_detected=True,
+        header_backup=None,
+        luks_erase=LuksEraseResult(device="/dev/sda", attempted=True, erased=True),
+        imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+    )
+    monkeypatch.setattr(
+        cli, "live_wipe",
+        lambda device, image, images_repository, header_backup_path=None, dry_run=False: fake_report,
+    )
+
+    exit_code = main([
+        "live-wipe",
+        "--device", "/dev/sda",
+        "--image", "golden-kali",
+        "--images-repository", str(tmp_path),
+        "--out-dir", "certificates",
+    ])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Cle LUKS detruite: OK" in out
+    assert "Reimagage: OK" in out
