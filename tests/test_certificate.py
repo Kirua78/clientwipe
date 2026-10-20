@@ -77,6 +77,7 @@ def test_generate_full_wipe_certificate_reports_pass(tmp_path):
         device="/dev/sda3",
         boot_entry="Clonezilla Recovery",
         luks_detected=True,
+        header_backup=None,
         luks_erase=LuksEraseResult(device="/dev/sda3", attempted=True, erased=True),
         reboot_scheduled=RebootScheduleResult(boot_entry="Clonezilla Recovery", attempted=True, scheduled=True),
     )
@@ -98,6 +99,7 @@ def test_generate_full_wipe_certificate_reports_failure_when_luks_erase_fails(tm
         device="/dev/sda3",
         boot_entry="Clonezilla Recovery",
         luks_detected=True,
+        header_backup=None,
         luks_erase=LuksEraseResult(device="/dev/sda3", attempted=True, erased=False, error="boom"),
         reboot_scheduled=RebootScheduleResult(boot_entry="Clonezilla Recovery", attempted=True, scheduled=True),
     )

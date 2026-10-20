@@ -82,3 +82,58 @@ def test_erase_luks_key_failure_reports_stderr(monkeypatch):
 
     assert result.erased is False
     assert "still in use" in result.error
+
+
+def test_backup_luks_header_refuses_when_target_not_a_mountpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr(luks.shutil, "which", lambda name: "/usr/sbin/cryptsetup")
+    monkeypatch.setattr(luks.os.path, "ismount", lambda path: False)
+
+    backup_path = tmp_path / "usb" / "header.bin"
+    backup_path.parent.mkdir()
+
+    result = luks.backup_luks_header("/dev/sda3", backup_path, dry_run=False)
+
+    assert result.attempted is False
+    assert result.backed_up is False
+    assert "point de montage" in result.error
+
+
+def test_backup_luks_header_dry_run_does_not_execute(tmp_path, monkeypatch):
+    monkeypatch.setattr(luks.shutil, "which", lambda name: "/usr/sbin/cryptsetup")
+    monkeypatch.setattr(luks.os.path, "ismount", lambda path: True)
+
+    backup_path = tmp_path / "usb" / "header.bin"
+    backup_path.parent.mkdir()
+
+    result = luks.backup_luks_header("/dev/sda3", backup_path, dry_run=True)
+
+    assert result.attempted is False
+    assert result.backed_up is False
+
+
+def test_backup_luks_header_success(tmp_path, monkeypatch):
+    monkeypatch.setattr(luks.shutil, "which", lambda name: "/usr/sbin/cryptsetup")
+    monkeypatch.setattr(luks.os.path, "ismount", lambda path: True)
+
+    backup_path = tmp_path / "usb" / "header.bin"
+    backup_path.parent.mkdir()
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    calls = {}
+
+    def fake_run(cmd, capture_output=True, text=True, check=False):
+        calls["cmd"] = cmd
+        return FakeCompleted()
+
+    monkeypatch.setattr(luks.subprocess, "run", fake_run)
+
+    result = luks.backup_luks_header("/dev/sda3", backup_path, dry_run=False)
+
+    assert result.attempted is True
+    assert result.backed_up is True
+    assert "luksHeaderBackup" in calls["cmd"]
+    assert str(backup_path) in calls["cmd"]

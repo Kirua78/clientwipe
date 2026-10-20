@@ -5,6 +5,7 @@ import dataclasses
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -146,10 +147,19 @@ def _cmd_trigger_full_reset(args: argparse.Namespace, config: Config) -> int:
         )
         return 1
 
+    header_backup_path = None
+    if config.full_reset.header_backup_dir:
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        header_backup_path = Path(config.full_reset.header_backup_dir) / f"{args.operator or 'clientwipe'}-{timestamp}.luks-header"
+
+    backup_note = (
+        f" Une sauvegarde de la cle de chiffrement sera ecrite sur la cle USB avant la destruction."
+        if header_backup_path is not None else ""
+    )
     message = (
         f"Cle USB autorisee detectee. Lancer la remise a zero complete de "
         f"{config.full_reset.device} ? Le poste va redemarrer et repartir "
-        f"d'une image propre."
+        f"d'une image propre.{backup_note}"
     )
     exit_code = _require_confirmation(message, args.yes)
     if exit_code is not None:
@@ -160,15 +170,21 @@ def _cmd_trigger_full_reset(args: argparse.Namespace, config: Config) -> int:
         snapshot_result = dataclasses.asdict(create_snapshot("clientwipe: avant remise a zero complete"))
         _print_snapshot_status(snapshot_result)
 
-    report = full_wipe(config.full_reset.device, config.full_reset.boot_entry, dry_run=False)
+    report = full_wipe(
+        config.full_reset.device, config.full_reset.boot_entry,
+        header_backup_path=header_backup_path, dry_run=False,
+    )
     certificate = generate_full_wipe_certificate(
         report, Path(args.out_dir), args.gpg_key, args.operator, snapshot=snapshot_result,
     )
 
     print(f"LUKS detecte: {'oui' if report.luks_detected else 'non'}")
     if report.luks_detected:
+        if report.header_backup is not None:
+            backed_up = report.header_backup.backed_up
+            print(f"Sauvegarde en-tete LUKS: {'OK' if backed_up else f'ECHEC ({report.header_backup.error})'}")
         erased = bool(report.luks_erase and report.luks_erase.erased)
-        print(f"Cle LUKS detruite: {'OK' if erased else 'ECHEC'}")
+        print(f"Cle LUKS detruite: {'OK' if erased else 'ECHEC (ou non tentee, voir sauvegarde ci-dessus)'}")
     print(f"Reimagage programme au prochain demarrage: {'OK' if report.reboot_scheduled.scheduled else 'ECHEC'}")
     print(f"Certificat: {certificate['json_path']}")
 

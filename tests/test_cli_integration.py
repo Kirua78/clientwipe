@@ -110,6 +110,7 @@ def _fake_full_wipe_report():
         device="/dev/sda3",
         boot_entry="Clonezilla Recovery",
         luks_detected=True,
+        header_backup=None,
         luks_erase=LuksEraseResult(device="/dev/sda3", attempted=True, erased=True),
         reboot_scheduled=RebootScheduleResult(boot_entry="Clonezilla Recovery", attempted=True, scheduled=True),
     )
@@ -127,7 +128,7 @@ def test_trigger_full_reset_happy_path_reboots_by_default(tmp_path, monkeypatch,
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(cli, "full_wipe", lambda device, boot_entry, dry_run: _fake_full_wipe_report())
+    monkeypatch.setattr(cli, "full_wipe", lambda device, boot_entry, header_backup_path=None, dry_run=False: _fake_full_wipe_report())
     reboot_calls = []
     monkeypatch.setattr(cli, "reboot_now", lambda dry_run: reboot_calls.append(dry_run) or True)
 
@@ -159,7 +160,7 @@ def test_trigger_full_reset_no_auto_reboot_skips_reboot(tmp_path, monkeypatch, c
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(cli, "full_wipe", lambda device, boot_entry, dry_run: _fake_full_wipe_report())
+    monkeypatch.setattr(cli, "full_wipe", lambda device, boot_entry, header_backup_path=None, dry_run=False: _fake_full_wipe_report())
     reboot_calls = []
     monkeypatch.setattr(cli, "reboot_now", lambda dry_run: reboot_calls.append(dry_run) or True)
 

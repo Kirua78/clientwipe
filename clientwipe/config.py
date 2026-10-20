@@ -18,10 +18,14 @@ class SanitizeTarget:
 @dataclass(frozen=True)
 class FullResetConfig:
     """Where to perform a full disk reset: which block device to check for
-    LUKS/erase, and which GRUB entry to boot into for the actual reimage."""
+    LUKS/erase, which GRUB entry to boot into for the actual reimage, and
+    (optionally) a mount point, typically the triggering USB key itself,
+    where the LUKS header is backed up before the keys are destroyed, as a
+    real undo path."""
 
     device: str
     boot_entry: str
+    header_backup_dir: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +49,7 @@ class Config:
             full_reset = FullResetConfig(
                 device=full_reset_raw["device"],
                 boot_entry=full_reset_raw["boot_entry"],
+                header_backup_dir=full_reset_raw.get("header_backup_dir"),
             )
 
         if not targets and full_reset is None:
