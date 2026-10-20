@@ -53,6 +53,17 @@ flowchart LR
   couverts, pas seulement le profil utilisateur. Si le disque n'est pas
   chiffre, l'etape de destruction de cle est simplement ignoree et l'outil
   passe directement au reimagage.
+- **Sauvegarde de l'en-tete LUKS avant destruction (optionnelle, recommandee)** :
+  Timeshift ne protege pas contre une destruction de cle LUKS : son
+  snapshot est stocke *dans* le volume chiffre, donc perdu avec le reste.
+  Si `header_backup_dir` est configure (typiquement un point de montage de
+  la cle USB declencheuse elle-meme), l'outil sauvegarde l'en-tete LUKS
+  (`cryptsetup luksHeaderBackup`) juste avant de detruire les cles : un vrai
+  retour en arriere possible (`cryptsetup luksHeaderRestore` + l'ancienne
+  phrase secrete) en cas de declenchement par erreur. Si l'emplacement
+  configure n'est pas un point de montage actif au moment du declenchement
+  (cle non branchee/montee), l'outil refuse de detruire la cle plutot que
+  d'ecrire la sauvegarde au mauvais endroit.
 - **Sanitisation ciblee (mode alternatif, `--mode targeted`)** : effacement
   multi-passes (`shred` si disponible, sinon repli pur Python) des
   emplacements definis dans un fichier de configuration YAML (projets Burp,
@@ -195,6 +206,7 @@ fournit un point de depart) :
 full_reset:
   device: /dev/sda3
   boot_entry: "Clonezilla Recovery"
+  header_backup_dir: /mnt/clientwipe-usb/luks-headers  # optionnel, voir Fonctionnalites
 
 # Mode targeted (--mode targeted, ou clientwipe run)
 passes: 3

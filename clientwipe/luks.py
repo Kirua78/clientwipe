@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 
@@ -69,4 +71,58 @@ def erase_luks_key(device: str, dry_run: bool = True) -> LuksEraseResult:
         stdout=completed.stdout,
         stderr=completed.stderr,
         error=None if erased else (completed.stderr.strip() or "cryptsetup a renvoye un code d'erreur"),
+    )
+
+
+@dataclass
+class LuksHeaderBackupResult:
+    device: str
+    backup_path: str
+    attempted: bool
+    backed_up: bool
+    stdout: str = ""
+    stderr: str = ""
+    error: Optional[str] = None
+
+
+def backup_luks_header(device: str, backup_path: Path, dry_run: bool = True) -> LuksHeaderBackupResult:
+    """Back up the LUKS header (key slots included) to `backup_path` before
+    destroying the live keys with erase_luks_key(). This is the only real
+    undo: restoring it later with `cryptsetup luksHeaderRestore` makes the
+    original passphrase work again.
+
+    `backup_path`'s parent directory must already be an active mount point
+    (typically the triggering USB key itself), not just an existing
+    directory. Writing the backup anywhere on the device being erased would
+    defeat the whole point, so this refuses rather than silently writing to
+    the wrong filesystem if nothing is actually mounted there.
+    """
+    if shutil.which("cryptsetup") is None:
+        return LuksHeaderBackupResult(
+            device=device, backup_path=str(backup_path), attempted=False, backed_up=False,
+            error="cryptsetup n'est pas installe",
+        )
+
+    if not backup_path.parent.is_dir() or not os.path.ismount(backup_path.parent):
+        return LuksHeaderBackupResult(
+            device=device, backup_path=str(backup_path), attempted=False, backed_up=False,
+            error=f"{backup_path.parent} n'est pas un point de montage actif (cle USB non montee ?)",
+        )
+
+    if dry_run:
+        return LuksHeaderBackupResult(device=device, backup_path=str(backup_path), attempted=False, backed_up=False, error="dry-run")
+
+    completed = subprocess.run(
+        ["cryptsetup", "luksHeaderBackup", device, "--header-backup-file", str(backup_path)],
+        capture_output=True, text=True, check=False,
+    )
+    backed_up = completed.returncode == 0
+    return LuksHeaderBackupResult(
+        device=device,
+        backup_path=str(backup_path),
+        attempted=True,
+        backed_up=backed_up,
+        stdout=completed.stdout,
+        stderr=completed.stderr,
+        error=None if backed_up else (completed.stderr.strip() or "cryptsetup a renvoye un code d'erreur"),
     )

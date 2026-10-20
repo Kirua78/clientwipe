@@ -77,6 +77,7 @@ code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; }}
 <li>Operateur : <code>{operator}</code></li>
 <li>Peripherique : <code>{device}</code></li>
 <li>Chiffrement LUKS detecte : {luks_detected}</li>
+<li>Sauvegarde de l'en-tete LUKS : {header_backup_line}</li>
 <li>Cle LUKS detruite : {luks_erased}</li>
 <li>Entree GRUB de reimagage programmee : {boot_entry} ({reboot_scheduled})</li>
 <li>Genere le : {generated_at}</li>
@@ -224,6 +225,11 @@ def generate_full_wipe_certificate(
     if report.luks_detected:
         luks_erased = "oui" if (report.luks_erase and report.luks_erase.erased) else "ECHEC"
 
+    header_backup_line = "non demandee"
+    if report.luks_detected and report.header_backup is not None:
+        hb = report.header_backup
+        header_backup_line = f"OK ({hb.backup_path})" if hb.backed_up else f"ECHEC ({hb.error})"
+
     html_path = out_dir / f"full-reset-certificate-{timestamp_slug}.html"
     html_path.write_text(
         FULL_WIPE_HTML_TEMPLATE.format(
@@ -233,6 +239,7 @@ def generate_full_wipe_certificate(
             operator=payload["operator"],
             device=report.device,
             luks_detected="oui" if report.luks_detected else "non",
+            header_backup_line=header_backup_line,
             luks_erased=luks_erased,
             boot_entry=report.boot_entry,
             reboot_scheduled="OK" if report.reboot_scheduled.scheduled else "ECHEC",

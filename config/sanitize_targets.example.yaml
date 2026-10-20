@@ -9,6 +9,13 @@
 full_reset:
   device: /dev/sda3
   boot_entry: "Clonezilla Recovery"
+  # Optionnel mais recommande : point de montage (typiquement la cle USB
+  # declencheuse elle-meme, montee a un emplacement fixe prepare lors du
+  # deploiement) ou sauvegarder l'en-tete LUKS avant destruction de la cle.
+  # Permet un vrai retour en arriere (cryptsetup luksHeaderRestore) en cas
+  # de declenchement par erreur. Sans cette ligne, la destruction de cle
+  # est definitive des la confirmation.
+  # header_backup_dir: /mnt/clientwipe-usb/luks-headers
 
 # "targets" et "passes" ne servent qu'au mode --mode targeted (effacement
 # cible fichier par fichier, sans reimagage/redemarrage) : les chemins sont
