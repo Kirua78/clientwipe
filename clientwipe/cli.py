@@ -99,6 +99,23 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if report.passed else 1
 
 
+def _confirm_destructive_action(root: Path) -> Optional[bool]:
+    """Ask for confirmation before a real sanitization: a terminal prompt
+    when one is available, otherwise an "Autoriser"/"Refuser" dialog on the
+    active desktop session (the USB-triggered systemd path has no TTY).
+    Returns None when there is no terminal AND no graphical session to ask
+    in at all. The caller treats that as a refusal to flag for review,
+    never as an implicit yes.
+    """
+    message = f"Cle USB autorisee detectee. Lancer la sanitisation de {root} ?"
+    try:
+        answer = input(f"{message} [y/N] ")
+        return answer.strip().lower() == "y"
+    except EOFError:
+        from .gui_confirm import ask_confirmation_gui
+        return ask_confirmation_gui(message)
+
+
 def cmd_trigger(args: argparse.Namespace) -> int:
     allowlist_path = Path(args.allowlist)
     if not is_allowed(args.serial, allowlist_path):
@@ -106,20 +123,16 @@ def cmd_trigger(args: argparse.Namespace) -> int:
         return 1
 
     if not args.yes:
-        # No TTY (systemd service, cron, ...): fail safe instead of crashing
-        # on EOFError. The serial allow-list is the real authorization
-        # boundary for the USB-triggered path, confirmation is only for
-        # interactive use.
-        try:
-            answer = input(f"Cle USB autorisee detectee. Lancer la sanitisation de {args.root} ? [y/N] ")
-        except EOFError:
+        confirmed = _confirm_destructive_action(Path(args.root))
+        if confirmed is None:
             print(
-                "Pas de terminal interactif pour confirmer, utilisez --yes "
-                "pour le declenchement automatique (service systemd).",
+                "Pas de terminal interactif et aucune confirmation graphique "
+                "disponible (zenity ou session de bureau introuvable) : "
+                "operation annulee.",
                 file=sys.stderr,
             )
             return 1
-        if answer.strip().lower() != "y":
+        if not confirmed:
             print("Annule par l'operateur.")
             return 0
 

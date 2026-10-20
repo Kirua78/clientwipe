@@ -59,6 +59,8 @@ def test_trigger_without_tty_fails_safe_instead_of_crashing(tmp_path, monkeypatc
         raise EOFError
 
     monkeypatch.setattr("builtins.input", raise_eof)
+    # No desktop session to fall back to in this test environment either.
+    monkeypatch.setattr("clientwipe.gui_confirm.ask_confirmation_gui", lambda message, timeout=30: None)
 
     exit_code = main([
         "trigger",
