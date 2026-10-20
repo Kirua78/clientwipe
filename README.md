@@ -14,9 +14,9 @@ NIST SP 800-88 "Guidelines for Media Sanitization" et par l'esprit d'ISO
 27001 sur la protection de l'information).
 
 **ClientWipe** transforme cette etape manuelle en un geste simple et
-verifiable : on branche une cle USB dediee, l'outil sanitise automatiquement
-les emplacements sensibles connus, verifie qu'il ne reste rien, et produit un
-certificat d'audit horodate.
+verifiable : on branche une cle USB dediee et, par defaut, le poste repart
+integralement a neuf, comme si un auditeur rallumait une machine jamais
+utilisee, tous compartiments compris, pas seulement le profil utilisateur.
 
 ## Architecture
 
@@ -27,13 +27,42 @@ flowchart LR
     Service --> Trigger[clientwipe trigger]
     Trigger -->|verifie le numero de serie| Allowlist[(allow-list)]
     Allowlist -->|refuse| Stop[Aucune action]
-    Allowlist -->|autorise + confirmation| Sanitize[Sanitisation ciblee<br/>shred multi-passes]
+    Allowlist -->|autorise + confirmation| Mode{Mode}
+    Mode -->|full-reset, par defaut| Luks[LUKS detecte ?]
+    Luks -->|oui| Erase[Destruction de la cle LUKS<br/>effacement cryptographique instantane]
+    Luks -->|non| Reboot
+    Erase --> Reboot[Programme le prochain demarrage<br/>vers l'environnement de recuperation]
+    Reboot --> Reimage[Reimagage complet<br/>Clonezilla/Rescuezilla, hors ligne]
+    Mode -->|targeted, optionnel| Sanitize[Sanitisation ciblee<br/>shred multi-passes]
     Sanitize --> Verify[Verification post-effacement]
-    Verify --> Cert[Certificat d'audit<br/>JSON + HTML, SHA-256, GPG optionnel]
+    Reboot --> Cert[Certificat d'audit<br/>JSON + HTML, SHA-256, GPG optionnel]
+    Verify --> Cert
 ```
 
 ## Fonctionnalites
 
+- **Remise a zero complete (mode par defaut du declenchement USB)** : au
+  branchement de la cle, l'outil detecte automatiquement si le disque est
+  chiffre en LUKS. Si oui, il detruit les cles de chiffrement : un
+  effacement cryptographique NIST SP 800-88 niveau "Purge", instantane et
+  fiable sur SSD/NVMe, contrairement a un simple multi-passes logiciel qui
+  ne garantit rien face au wear-leveling. Il programme ensuite le
+  redemarrage vers un environnement de recuperation dedie qui reimage le
+  disque entier depuis une image de reference (voir `clientwipe/full_wipe.py`,
+  `clientwipe/luks.py`). Resultat : tous les compartiments du poste sont
+  couverts, pas seulement le profil utilisateur. Si le disque n'est pas
+  chiffre, l'etape de destruction de cle est simplement ignoree et l'outil
+  passe directement au reimagage.
+- **Sanitisation ciblee (mode alternatif, `--mode targeted`)** : effacement
+  multi-passes (`shred` si disponible, sinon repli pur Python) des
+  emplacements definis dans un fichier de configuration YAML (projets Burp,
+  cles SSH, configs VPN, historique shell, profils navigateurs,
+  telechargements/temp), sans redemarrage. Plus rapide que le reset complet,
+  mais n'offre pas la meme garantie d'exhaustivite. Les patterns sont
+  relatifs a `--root` par defaut, mais un pattern commencant par `/` est
+  resolu depuis la racine du systeme de fichiers (`/opt/pentest-tools/**`,
+  un point de montage de loot...), et une **verification independante**
+  re-scanne les memes cibles apres effacement pour detecter tout residu.
 - **Declenchement par cle USB** : une regle udev ne reagit qu'aux cles dont
   le numero de serie figure dans une allow-list ; le numero de serie est
   revalide cote Python (defense en profondeur). Pas d'autorun aveugle : une
@@ -46,35 +75,21 @@ flowchart LR
   silencieux sans qu'un humain ait pu dire non. `clientwipe run` (usage
   manuel en ligne de commande) garde de son cote une confirmation dans le
   terminal.
-- **Sanitisation ciblee** : effacement multi-passes (`shred` si disponible,
-  sinon repli pur Python) des emplacements definis dans un fichier de
-  configuration YAML (projets Burp, cles SSH, configs VPN, historique shell,
-  profils navigateurs, telechargements/temp). Les patterns sont relatifs a
-  `--root` par defaut, mais un pattern commencant par `/` est resolu depuis
-  la racine du systeme de fichiers : utile pour des emplacements connus hors
-  du profil utilisateur (`/opt/pentest-tools/**`, un point de montage de
-  loot...).
-- **Verification independante** : un second passage re-scanne les mêmes
-  cibles apres effacement pour detecter tout residu, au lieu de supposer que
-  l'effacement a reussi.
-- **Snapshot Timeshift automatique** : avant toute sanitisation reelle, le
+- **Snapshot Timeshift automatique** : avant toute operation reelle, le
   declenchement par cle USB (`trigger`) prend par defaut un snapshot
   Timeshift du systeme (`--skip-snapshot` pour desactiver) ; la commande
   manuelle `run` peut faire de meme avec `--snapshot`. Le resultat
   (reussite/echec/non disponible) est trace dans le certificat genere, pour
   toujours savoir si un point de restauration existait avant l'operation.
-  Si Timeshift n'est pas installe, l'outil continue sans bloquer la
-  sanitisation : c'est un filet de securite, pas une dependance obligatoire.
+  Si Timeshift n'est pas installe, l'outil continue sans bloquer
+  l'operation : c'est un filet de securite, pas une dependance obligatoire.
 - **Certificat d'audit** : rapport horodate (JSON + HTML) avec poste,
-  operateur, methode, duree, resultat de verification et empreinte SHA-256 ;
-  signature GPG optionnelle si une cle est disponible sur le poste.
-- **Reset complet (mode avance, optionnel)** : wrapper autour de Clonezilla
-  (`ocs-sr`) pour restaurer une image "golden" de reference plutot qu'une
-  sanitisation ciblee.
+  operateur, methode, duree/peripherique, resultat de verification et
+  empreinte SHA-256 ; signature GPG optionnelle si une cle est disponible.
 - **Mode demo sans risque** : `clientwipe demo` cree un faux poste (fausses
-  cles SSH, faux projet Burp, faux historique shell...) pour que tout le
-  cycle soit testable en une commande, sans toucher a la moindre vraie
-  donnee.
+  cles SSH, faux projet Burp, faux historique shell...) pour que le cycle de
+  sanitisation ciblee soit testable en une commande, sans toucher a la
+  moindre vraie donnee.
 
 ## Demarrage rapide (bac a sable de demo)
 
@@ -122,11 +137,18 @@ d'evenements udev. Pour le valider sans aucun risque :
    sudo ./install.sh
    ```
    Ce script installe le paquet, cree `/etc/clientwipe/`, copie la regle
-   udev et le service systemd, et initialise une allow-list vide.
+   udev et le service systemd, et initialise une allow-list vide. Le
+   service installe tourne en mode `full-reset` par defaut (voir
+   "Limitations connues" : sa derniere etape, le reimagage, necessite un
+   environnement de recuperation que ce depot ne fournit pas). Pour tester
+   le mode `targeted` deja valide de bout en bout, editez
+   `/etc/systemd/system/clientwipe-trigger@.service` et ajoutez a la fin de
+   la commande `ExecStart` : `--mode targeted --root /home/<votre-utilisateur>`,
+   puis `sudo systemctl daemon-reload`.
 3. **Peuplez un faux profil utilisateur realiste** sur la VM pour simuler un
    vrai poste de pentest (reutilise le meme generateur que le mode demo) :
    ```bash
-   python3 demo/seed_sandbox.py /home/pentest
+   python3 demo/seed_sandbox.py /home/<votre-utilisateur>
    ```
 4. **Enregistrez le numero de serie** de votre cle USB de test :
    ```bash
@@ -151,17 +173,30 @@ d'evenements udev. Pour le valider sans aucun risque :
 6. **Revenez au snapshot** (hyperviseur ou `sudo timeshift --restore`) avant
    de rejouer le test, pour repartir d'un etat propre a chaque essai.
 
-Limite assumee : le mode `reset` (restauration d'image via Clonezilla) n'est
-pas demontrable dans ce depot (il necessite une vraie infrastructure
-d'imaging), il est donc uniquement couvert par des tests unitaires avec
-`subprocess` simule, et documente comme mode avance a adapter en entreprise.
+Ce parcours valide le mode `--mode targeted` de bout en bout (udev, systemd,
+fenetre graphique, effacement, verification, certificat). Le mode
+`full-reset` (par defaut) ajoute deux etapes supplementaires non demontrables
+de la meme facon :
+- la destruction de cle LUKS (`clientwipe/luks.py`) est testable en reel des
+  que le disque de la VM est chiffre (installeur Kali : "Assiste - utiliser
+  tout un disque avec LVM chiffre") ;
+- le reimagage complet lui-meme necessite un environnement de recuperation
+  prepare a l'avance (entree GRUB dediee lancant Clonezilla/Rescuezilla sans
+  interaction), une infrastructure hors du perimetre de ce depot, couverte
+  uniquement par des tests unitaires avec `subprocess`/`grub-reboot` simules.
 
 ## Configuration
 
-Les emplacements sanitises sont decrits dans un fichier YAML
-(`config/sanitize_targets.example.yaml` fournit un point de depart) :
+Un seul fichier YAML pilote les deux modes (`config/sanitize_targets.example.yaml`
+fournit un point de depart) :
 
 ```yaml
+# Mode full-reset (par defaut pour le declenchement USB)
+full_reset:
+  device: /dev/sda3
+  boot_entry: "Clonezilla Recovery"
+
+# Mode targeted (--mode targeted, ou clientwipe run)
 passes: 3
 targets:
   - name: ssh-keys
@@ -172,15 +207,29 @@ targets:
 
 ## Conformite
 
-L'approche s'inspire de NIST SP 800-88 (plusieurs passes d'ecrasement avant
-suppression, verification independante du resultat) et produit, a chaque
-execution, une preuve exploitable en audit interne ou externe (ISO 27001,
-exigences contractuelles client) : qui, quand, quoi, avec quel resultat.
+L'approche s'inspire de NIST SP 800-88 "Guidelines for Media Sanitization"
+et d'ISO/IEC 27001 sur la protection de l'information :
+- le mode `full-reset` (par defaut) vise le niveau "Purge" de NIST 800-88 :
+  effacement cryptographique instantane (destruction de cle LUKS) suivi d'un
+  reimagage complet, la methode recommandee sur SSD/NVMe la ou un simple
+  multi-passes logiciel n'offre pas de garantie face au wear-leveling ;
+- le mode `targeted` couvre le niveau "Clear" (multi-passes d'ecrasement,
+  verification independante du resultat).
+
+Chaque execution produit une preuve exploitable en audit interne ou externe
+(exigences contractuelles client, traçabilite qualite) : qui, quand, quoi,
+avec quel resultat.
 
 ## Limitations connues
 
-- Le mode `reset` (Clonezilla) est un wrapper documente, non execute
-  reellement dans ce depot (pas d'infrastructure d'imaging disponible en CI).
+- Le reimagage complet (etape finale du mode `full-reset`) suppose un
+  environnement de recuperation prepare a l'avance sur le poste (entree
+  GRUB dediee lancant Clonezilla/Rescuezilla sans interaction) : cette
+  infrastructure est hors du perimetre de ce depot et n'est donc pas
+  executee reellement ici, seulement couverte par des tests unitaires avec
+  `subprocess`/`grub-reboot` simules. Voir "Test en conditions reelles".
+- La destruction de cle LUKS, elle, est reelle et testable des que le
+  disque cible est chiffre.
 - La signature GPG du certificat est optionnelle et desactivee si aucune cle
   n'est configuree ou si `gpg` n'est pas installe.
 - Le declenchement udev/systemd est specifique a Linux ; voir la section

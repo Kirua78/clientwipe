@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Optional
 
 from . import __version__
-from .certificate import generate_certificate
+from .certificate import generate_certificate, generate_full_wipe_certificate
 from .config import Config
-from .imaging import restore_golden_image
+from .full_wipe import full_wipe
+from .imaging import reboot_now, restore_golden_image
 from .sanitize import sanitize
 from .snapshot import create_snapshot
 from .usb_trigger import is_allowed
@@ -99,15 +100,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if report.passed else 1
 
 
-def _confirm_destructive_action(root: Path) -> Optional[bool]:
-    """Ask for confirmation before a real sanitization: a terminal prompt
-    when one is available, otherwise an "Autoriser"/"Refuser" dialog on the
-    active desktop session (the USB-triggered systemd path has no TTY).
-    Returns None when there is no terminal AND no graphical session to ask
-    in at all. The caller treats that as a refusal to flag for review,
-    never as an implicit yes.
+def _confirm_destructive_action(message: str) -> Optional[bool]:
+    """Ask for confirmation before a real destructive action: a terminal
+    prompt when one is available, otherwise an "Autoriser"/"Refuser" dialog
+    on the active desktop session (the USB-triggered systemd path has no
+    TTY). Returns None when there is no terminal AND no graphical session
+    to ask in at all. The caller treats that as a refusal to flag for
+    review, never as an implicit yes.
     """
-    message = f"Cle USB autorisee detectee. Lancer la sanitisation de {root} ?"
     try:
         answer = input(f"{message} [y/N] ")
         return answer.strip().lower() == "y"
@@ -116,27 +116,75 @@ def _confirm_destructive_action(root: Path) -> Optional[bool]:
         return ask_confirmation_gui(message)
 
 
-def cmd_trigger(args: argparse.Namespace) -> int:
-    allowlist_path = Path(args.allowlist)
-    if not is_allowed(args.serial, allowlist_path):
-        print(f"Cle USB non reconnue (serial={args.serial!r}), aucune action.", file=sys.stderr)
+def _require_confirmation(message: str, yes: bool) -> Optional[int]:
+    """Returns an exit code to return immediately if the action must NOT
+    proceed (declined, or nobody could be asked), or None when confirmed
+    and the caller should continue."""
+    if yes:
+        return None
+    confirmed = _confirm_destructive_action(message)
+    if confirmed is None:
+        print(
+            "Pas de terminal interactif et aucune confirmation graphique "
+            "disponible (zenity ou session de bureau introuvable) : "
+            "operation annulee.",
+            file=sys.stderr,
+        )
+        return 1
+    if not confirmed:
+        print("Annule par l'operateur.")
+        return 0
+    return None
+
+
+def _cmd_trigger_full_reset(args: argparse.Namespace, config: Config) -> int:
+    if config.full_reset is None:
+        print(
+            "Mode full-reset demande mais la configuration ne contient pas "
+            "de section 'full_reset' (device, boot_entry).",
+            file=sys.stderr,
+        )
         return 1
 
-    if not args.yes:
-        confirmed = _confirm_destructive_action(Path(args.root))
-        if confirmed is None:
-            print(
-                "Pas de terminal interactif et aucune confirmation graphique "
-                "disponible (zenity ou session de bureau introuvable) : "
-                "operation annulee.",
-                file=sys.stderr,
-            )
-            return 1
-        if not confirmed:
-            print("Annule par l'operateur.")
-            return 0
+    message = (
+        f"Cle USB autorisee detectee. Lancer la remise a zero complete de "
+        f"{config.full_reset.device} ? Le poste va redemarrer et repartir "
+        f"d'une image propre."
+    )
+    exit_code = _require_confirmation(message, args.yes)
+    if exit_code is not None:
+        return exit_code
 
-    config = Config.load(Path(args.config))
+    snapshot_result = None
+    if not args.skip_snapshot:
+        snapshot_result = dataclasses.asdict(create_snapshot("clientwipe: avant remise a zero complete"))
+        _print_snapshot_status(snapshot_result)
+
+    report = full_wipe(config.full_reset.device, config.full_reset.boot_entry, dry_run=False)
+    certificate = generate_full_wipe_certificate(
+        report, Path(args.out_dir), args.gpg_key, args.operator, snapshot=snapshot_result,
+    )
+
+    print(f"LUKS detecte: {'oui' if report.luks_detected else 'non'}")
+    if report.luks_detected:
+        erased = bool(report.luks_erase and report.luks_erase.erased)
+        print(f"Cle LUKS detruite: {'OK' if erased else 'ECHEC'}")
+    print(f"Reimagage programme au prochain demarrage: {'OK' if report.reboot_scheduled.scheduled else 'ECHEC'}")
+    print(f"Certificat: {certificate['json_path']}")
+
+    if report.passed and not args.no_auto_reboot:
+        print("Redemarrage du poste...")
+        reboot_now(dry_run=False)
+
+    return 0 if report.passed else 1
+
+
+def _cmd_trigger_targeted(args: argparse.Namespace, config: Config) -> int:
+    message = f"Cle USB autorisee detectee. Lancer la sanitisation de {args.root} ?"
+    exit_code = _require_confirmation(message, args.yes)
+    if exit_code is not None:
+        return exit_code
+
     result = _run_pipeline(
         Path(args.root), config, Path(args.out_dir), args.gpg_key, args.operator,
         take_snapshot=not args.skip_snapshot,
@@ -144,6 +192,19 @@ def cmd_trigger(args: argparse.Namespace) -> int:
     _print_snapshot_status(result["snapshot"])
     print(f"Certificat: {result['certificate']['json_path']}")
     return 0 if result["verify"]["passed"] else 1
+
+
+def cmd_trigger(args: argparse.Namespace) -> int:
+    allowlist_path = Path(args.allowlist)
+    if not is_allowed(args.serial, allowlist_path):
+        print(f"Cle USB non reconnue (serial={args.serial!r}), aucune action.", file=sys.stderr)
+        return 1
+
+    config = Config.load(Path(args.config))
+
+    if args.mode == "full-reset":
+        return _cmd_trigger_full_reset(args, config)
+    return _cmd_trigger_targeted(args, config)
 
 
 def cmd_reset(args: argparse.Namespace) -> int:
@@ -189,7 +250,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_trigger = subparsers.add_parser("trigger", help="Point d'entree udev/systemd declenche par cle USB")
     p_trigger.add_argument("--serial", default=None, help="Numero de serie USB (sinon lu depuis $ID_SERIAL_SHORT)")
     p_trigger.add_argument("--allowlist", default="/etc/clientwipe/allowed_usb_serials.txt")
-    p_trigger.add_argument("--root", default="/home/pentest")
+    p_trigger.add_argument(
+        "--mode", choices=["full-reset", "targeted"], default="full-reset",
+        help="full-reset (par defaut) detruit la cle LUKS si presente et programme un reimagage complet ; "
+             "targeted efface seulement les emplacements listes dans la configuration",
+    )
+    p_trigger.add_argument("--root", default="/home/pentest", help="Utilise seulement en mode targeted")
     p_trigger.add_argument("--config", default="/etc/clientwipe/sanitize_targets.yaml")
     p_trigger.add_argument("--out-dir", default="/var/log/clientwipe/certificates")
     p_trigger.add_argument("--gpg-key", default=None)
@@ -197,7 +263,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_trigger.add_argument("--yes", action="store_true", help="Ignore la confirmation interactive (usage non surveille)")
     p_trigger.add_argument(
         "--skip-snapshot", action="store_true",
-        help="Desactive le snapshot Timeshift automatique (pris par defaut avant chaque sanitisation declenchee par cle USB)",
+        help="Desactive le snapshot Timeshift automatique (pris par defaut avant chaque operation declenchee par cle USB)",
+    )
+    p_trigger.add_argument(
+        "--no-auto-reboot", action="store_true",
+        help="En mode full-reset, n'eteint/ne redemarre pas automatiquement apres la destruction de cle (laisse l'operateur rebooter)",
     )
     p_trigger.set_defaults(func=cmd_trigger)
 
