@@ -6,14 +6,14 @@ After=local-fs.target
 Type=oneshot
 # %i = numero de serie de la cle USB (ID_SERIAL_SHORT), fourni par la regle udev.
 # Adaptez --root a l'emplacement reel du poste/profil de travail pentest.
-# --yes : ce service n'a pas de terminal interactif pour confirmer. C'est
-# l'allow-list de numeros de serie (verifiee par clientwipe lui-meme avant
-# d'arriver ici) qui constitue l'autorisation reelle du declenchement USB.
+# Pas de --yes ici : ce service n'a pas de terminal, donc clientwipe affiche
+# a la place une fenetre "Autoriser"/"Refuser" sur la session graphique
+# active (voir clientwipe/gui_confirm.py). Ajoutez --yes seulement pour un
+# poste sans session graphique ou vous assumez un declenchement silencieux.
 ExecStart=/usr/local/bin/clientwipe trigger \
     --serial %i \
     --allowlist /etc/clientwipe/allowed_usb_serials.txt \
     --config /etc/clientwipe/sanitize_targets.yaml \
-    --root /home/pentest \
-    --yes
+    --root /home/pentest
 StandardOutput=journal
 StandardError=journal

@@ -38,11 +38,14 @@ flowchart LR
   le numero de serie figure dans une allow-list ; le numero de serie est
   revalide cote Python (defense en profondeur). Pas d'autorun aveugle : une
   cle non enregistree ne declenche rien. Le service systemd tourne sans
-  terminal : c'est donc l'allow-list, et non une confirmation humaine, qui
-  constitue l'autorisation reelle du declenchement automatique ; `clientwipe run`
-  (usage manuel en ligne de commande) garde lui une confirmation
-  interactive avant toute action destructive, et echoue proprement
-  (sans crash) si elle est lancee sans terminal disponible.
+  terminal, donc clientwipe affiche a la place une fenetre
+  "Autoriser"/"Refuser" sur la session de bureau active (via `zenity`,
+  voir `clientwipe/gui_confirm.py`) avant toute action destructive. Si la
+  fenetre expire sans reponse, ou si aucune session graphique n'est
+  disponible, l'operation est refusee par defaut : jamais d'effacement
+  silencieux sans qu'un humain ait pu dire non. `clientwipe run` (usage
+  manuel en ligne de commande) garde de son cote une confirmation dans le
+  terminal.
 - **Sanitisation ciblee** : effacement multi-passes (`shred` si disponible,
   sinon repli pur Python) des emplacements definis dans un fichier de
   configuration YAML (projets Burp, cles SSH, configs VPN, historique shell,
@@ -136,8 +139,9 @@ d'evenements udev. Pour le valider sans aucun risque :
    ```bash
    journalctl -u 'clientwipe-trigger@*' -f
    ```
-   Vous devez voir le service demarrer, la confirmation demandee (ou
-   l'execution directe si `--yes` a ete ajoute au service), puis la
+   Vous devez voir le service demarrer, puis une fenetre
+   "Autoriser"/"Refuser" apparaitre sur le bureau de la VM (sauf si `--yes`
+   a ete ajoute au service). Un clic sur "Autoriser" declenche la
    sanitisation, la verification et la generation du certificat dans
    `/var/log/clientwipe/certificates/`.
 6. **Revenez au snapshot** (hyperviseur ou `sudo timeshift --restore`) avant
