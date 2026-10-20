@@ -10,10 +10,11 @@ from pathlib import Path
 from typing import Optional
 
 from . import __version__
-from .certificate import generate_certificate, generate_full_wipe_certificate
+from .certificate import generate_certificate, generate_full_wipe_certificate, generate_live_wipe_certificate
 from .config import Config
 from .full_wipe import full_wipe
 from .imaging import reboot_now, restore_golden_image
+from .live_wipe import live_wipe
 from .sanitize import sanitize
 from .snapshot import create_snapshot
 from .usb_trigger import is_allowed
@@ -223,6 +224,52 @@ def cmd_trigger(args: argparse.Namespace) -> int:
     return _cmd_trigger_targeted(args, config)
 
 
+def cmd_live_wipe(args: argparse.Namespace) -> int:
+    """Entry point for the standalone bootable key (see README > "Cle
+    autonome bootable"): run directly from a live environment booted off
+    the trusted USB key, no udev/systemd/allow-list/GUI confirmation
+    needed. Choosing to boot from this specific key in the BIOS/UEFI menu
+    is itself the operator's authorization.
+    """
+    print(
+        f"ATTENTION : ceci va effacer DEFINITIVEMENT {args.device} et le "
+        f"reimager avec l'image '{args.image}'."
+    )
+    try:
+        confirm = input("Tapez OUI en majuscules pour continuer : ")
+    except EOFError:
+        print("Pas de terminal interactif pour confirmer : operation annulee.", file=sys.stderr)
+        return 1
+    if confirm != "OUI":
+        print("Annule par l'operateur.")
+        return 0
+
+    header_backup_path = None
+    if args.header_backup_dir:
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        device_slug = args.device.replace("/", "_")
+        header_backup_path = Path(args.header_backup_dir) / f"{device_slug}-{timestamp}.luks-header"
+
+    report = live_wipe(
+        args.device, args.image, Path(args.images_repository),
+        header_backup_path=header_backup_path, dry_run=False,
+    )
+    certificate = generate_live_wipe_certificate(report, Path(args.out_dir), args.gpg_key, args.operator)
+
+    print(f"LUKS detecte: {'oui' if report.luks_detected else 'non'}")
+    if report.luks_detected:
+        if report.header_backup is not None:
+            backed_up = report.header_backup.backed_up
+            print(f"Sauvegarde en-tete LUKS: {'OK' if backed_up else f'ECHEC ({report.header_backup.error})'}")
+        erased = bool(report.luks_erase and report.luks_erase.erased)
+        print(f"Cle LUKS detruite: {'OK' if erased else 'ECHEC (ou non tentee, voir sauvegarde ci-dessus)'}")
+    imaging_ok = report.imaging.executed and report.imaging.returncode == 0
+    print(f"Reimagage: {'OK' if imaging_ok else 'ECHEC'}")
+    print(f"Certificat: {certificate['json_path']}")
+
+    return 0 if report.passed else 1
+
+
 def cmd_reset(args: argparse.Namespace) -> int:
     result = restore_golden_image(
         args.image, args.device, Path(args.images_repository), dry_run=not args.confirm_reset
@@ -286,6 +333,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="En mode full-reset, n'eteint/ne redemarre pas automatiquement apres la destruction de cle (laisse l'operateur rebooter)",
     )
     p_trigger.set_defaults(func=cmd_trigger)
+
+    p_live_wipe = subparsers.add_parser(
+        "live-wipe",
+        help="Efface et reimage immediatement, depuis un environnement live demarre sur la cle USB elle-meme",
+    )
+    p_live_wipe.add_argument("--device", required=True, help="Peripherique a effacer et reimager (ex: /dev/sda)")
+    p_live_wipe.add_argument("--image", required=True, help="Nom de l'image golden a restaurer")
+    p_live_wipe.add_argument("--images-repository", required=True, help="Chemin vers l'image golden (typiquement sur la cle USB montee)")
+    p_live_wipe.add_argument("--header-backup-dir", default=None, help="Dossier (sur la cle USB) ou sauvegarder l'en-tete LUKS avant destruction")
+    p_live_wipe.add_argument("--out-dir", default="certificates")
+    p_live_wipe.add_argument("--gpg-key", default=None)
+    p_live_wipe.add_argument("--operator", default=None)
+    p_live_wipe.set_defaults(func=cmd_live_wipe)
 
     p_reset = subparsers.add_parser("reset", help="Restaure une image golden via Clonezilla (mode avance, optionnel)")
     p_reset.add_argument("--image", required=True)
