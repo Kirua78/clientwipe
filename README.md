@@ -36,9 +36,13 @@ flowchart LR
 
 - **Declenchement par cle USB** : une regle udev ne reagit qu'aux cles dont
   le numero de serie figure dans une allow-list ; le numero de serie est
-  revalide cote Python (defense en profondeur), et une confirmation
-  explicite est demandee avant toute action destructive. Pas d'autorun
-  aveugle : une cle non enregistree ne declenche rien.
+  revalide cote Python (defense en profondeur). Pas d'autorun aveugle : une
+  cle non enregistree ne declenche rien. Le service systemd tourne sans
+  terminal, donc l'allow-list -- pas une confirmation humaine -- est
+  l'autorisation reelle du declenchement automatique ; `clientwipe run`
+  (usage manuel en ligne de commande) garde lui une confirmation
+  interactive avant toute action destructive, et echoue proprement
+  (sans crash) si elle est lancee sans terminal disponible.
 - **Sanitisation ciblee** : effacement multi-passes (`shred` si disponible,
   sinon repli pur Python) des emplacements definis dans un fichier de
   configuration YAML (projets Burp, cles SSH, configs VPN, historique shell,
