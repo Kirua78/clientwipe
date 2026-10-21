@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
+from .bitlocker import detect_bitlocker
 from .imaging import ImagingResult, restore_golden_image
 from .luks import LuksEraseResult, LuksHeaderBackupResult, backup_luks_header, detect_luks, erase_luks_key
 
@@ -13,6 +14,7 @@ class LiveWipeReport:
     device: str
     image_name: str
     luks_detected: bool
+    bitlocker_detected: bool
     header_backup: Optional[LuksHeaderBackupResult]
     luks_erase: Optional[LuksEraseResult]
     imaging: ImagingResult
@@ -31,6 +33,7 @@ class LiveWipeReport:
             "device": self.device,
             "image_name": self.image_name,
             "luks_detected": self.luks_detected,
+            "bitlocker_detected": self.bitlocker_detected,
             "header_backup": asdict(self.header_backup) if self.header_backup else None,
             "luks_erase": asdict(self.luks_erase) if self.luks_erase else None,
             "imaging": asdict(self.imaging),
@@ -57,11 +60,16 @@ def live_wipe(
     itself the operator's authorization (no udev/systemd/allow-list/GUI
     dialog needed), so the reimage runs right away instead of being
     scheduled.
+
+    When `device` isn't LUKS-encrypted, it's also checked for BitLocker
+    (Windows) and reported as such; see bitlocker.py for why that's
+    detection-only. Either way the flow falls back to reimage-only.
     """
     detection = detect_luks(device)
 
     header_backup: Optional[LuksHeaderBackupResult] = None
     luks_erase: Optional[LuksEraseResult] = None
+    bitlocker_detected = False
 
     if detection.is_luks:
         backup_ok = True
@@ -71,6 +79,8 @@ def live_wipe(
 
         if backup_ok:
             luks_erase = erase_luks_key(device, dry_run=dry_run)
+    else:
+        bitlocker_detected = detect_bitlocker(device).is_bitlocker
 
     imaging_result = restore_golden_image(image_name, device, images_repository, dry_run=dry_run)
 
@@ -78,6 +88,7 @@ def live_wipe(
         device=device,
         image_name=image_name,
         luks_detected=detection.is_luks,
+        bitlocker_detected=bitlocker_detected,
         header_backup=header_backup,
         luks_erase=luks_erase,
         imaging=imaging_result,

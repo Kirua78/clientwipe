@@ -94,6 +94,17 @@ flowchart LR
   configure n'est pas un point de montage actif au moment du declenchement
   (cle non branchee/montee), l'outil refuse de detruire la cle plutot que
   d'ecrire la sauvegarde au mauvais endroit.
+- **Detection BitLocker (postes Windows)** : le poste cible n'a pas besoin
+  d'etre Linux. Si le disque n'est pas chiffre en LUKS, l'outil verifie s'il
+  s'agit d'un volume BitLocker (`cryptsetup bitlkDump`, support natif depuis
+  cryptsetup 2.3, sans avoir besoin d'outils Windows) et le signale
+  explicitement dans le certificat. Volontairement **detection seule, pas
+  destruction** : contrairement a LUKS, il n'existe pas d'equivalent a
+  `cryptsetup erase` pour le format BitLocker, et ecraser "a la main" les
+  bons octets sans machine Windows BitLocker reelle pour valider serait une
+  fausse garantie de niveau "Purge". Un poste Windows chiffre BitLocker est
+  donc traite au niveau "Clear" (reimagage complet), pas "Purge". Voir
+  `clientwipe/bitlocker.py`.
 - **Sanitisation ciblee (mode alternatif, `--mode targeted`)** : effacement
   multi-passes (`shred` si disponible, sinon repli pur Python) des
   emplacements definis dans un fichier de configuration YAML (projets Burp,
@@ -269,7 +280,11 @@ et d'ISO/IEC 27001 sur la protection de l'information :
   reimagage complet, la methode recommandee sur SSD/NVMe la ou un simple
   multi-passes logiciel n'offre pas de garantie face au wear-leveling ;
 - le mode `targeted` couvre le niveau "Clear" (multi-passes d'ecrasement,
-  verification independante du resultat).
+  verification independante du resultat) ;
+- un poste Windows chiffre BitLocker (detection seule, voir
+  `clientwipe/bitlocker.py`) reste au niveau "Clear" : le certificat le
+  precise explicitement plutot que de laisser croire a un niveau "Purge"
+  non verifie.
 
 Chaque execution produit une preuve exploitable en audit interne ou externe
 (exigences contractuelles client, traçabilite qualite) : qui, quand, quoi,
@@ -309,11 +324,18 @@ revenir en arriere : c'est assume.
   n'est configuree ou si `gpg` n'est pas installe.
 - Le declenchement udev/systemd est specifique a Linux ; voir la section
   "Test en conditions reelles" pour le valider sur une VM jetable.
-- `clientwipe live-wipe` (cle autonome bootable) a sa logique Python
-  validee par tests unitaires, mais l'image bootable elle-meme (construite
-  avec `live-build`, embarquant l'outil et une image Kali de reference)
-  n'est pas encore construite ni testee en conditions reelles dans ce
-  depot : c'est la prochaine etape de validation.
+- `clientwipe live-wipe` est valide en conditions reelles sur une session
+  Kali Live officielle (detection/sauvegarde/destruction LUKS reelles sur
+  un vrai peripherique bloc, echec propre sans Clonezilla installe). Reste
+  a construire : la cle definitive auto-suffisante (Kali **installe**
+  dessus, pas juste Live, avec Clonezilla + image golden + demarrage
+  automatique embarques), en pause suite a une instabilite materielle du
+  passthrough USB rencontree pendant la construction, a reprendre en
+  presentiel.
+- La detection BitLocker (`clientwipe/bitlocker.py`) est testee
+  unitairement (`cryptsetup bitlkDump` simule) mais pas encore validee sur
+  un vrai volume BitLocker reel, faute de poste Windows chiffre disponible
+  pour le test.
 
 ## Licence
 
