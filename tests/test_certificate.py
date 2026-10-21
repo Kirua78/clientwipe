@@ -78,6 +78,7 @@ def test_generate_full_wipe_certificate_reports_pass(tmp_path):
         device="/dev/sda3",
         boot_entry="Clonezilla Recovery",
         luks_detected=True,
+        bitlocker_detected=False,
         header_backup=None,
         luks_erase=LuksEraseResult(device="/dev/sda3", attempted=True, erased=True),
         reboot_scheduled=RebootScheduleResult(boot_entry="Clonezilla Recovery", attempted=True, scheduled=True),
@@ -102,6 +103,7 @@ def test_generate_full_wipe_certificate_reports_failure_when_luks_erase_fails(tm
         device="/dev/sda3",
         boot_entry="Clonezilla Recovery",
         luks_detected=True,
+        bitlocker_detected=False,
         header_backup=None,
         luks_erase=LuksEraseResult(device="/dev/sda3", attempted=True, erased=False, error="boom"),
         reboot_scheduled=RebootScheduleResult(boot_entry="Clonezilla Recovery", attempted=True, scheduled=True),
@@ -119,6 +121,7 @@ def test_generate_full_wipe_certificate_reports_clear_level_without_luks(tmp_pat
         device="/dev/sda3",
         boot_entry="Clonezilla Recovery",
         luks_detected=False,
+        bitlocker_detected=False,
         header_backup=None,
         luks_erase=None,
         reboot_scheduled=RebootScheduleResult(boot_entry="Clonezilla Recovery", attempted=True, scheduled=True),
@@ -136,6 +139,7 @@ def test_generate_live_wipe_certificate_reports_pass(tmp_path):
         device="/dev/sda",
         image_name="golden-kali",
         luks_detected=True,
+        bitlocker_detected=False,
         header_backup=None,
         luks_erase=LuksEraseResult(device="/dev/sda", attempted=True, erased=True),
         imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
@@ -158,6 +162,7 @@ def test_generate_live_wipe_certificate_reports_failure_when_imaging_fails(tmp_p
         device="/dev/sda",
         image_name="golden-kali",
         luks_detected=False,
+        bitlocker_detected=False,
         header_backup=None,
         luks_erase=None,
         imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=1),
@@ -168,3 +173,25 @@ def test_generate_live_wipe_certificate_reports_failure_when_imaging_fails(tmp_p
     assert result["overall_passed"] is False
     html = Path(result["html_path"]).read_text(encoding="utf-8")
     assert "ECHEC" in html
+
+
+def test_generate_live_wipe_certificate_reports_clear_level_with_bitlocker(tmp_path):
+    report = LiveWipeReport(
+        device="/dev/sda",
+        image_name="golden-windows",
+        luks_detected=False,
+        bitlocker_detected=True,
+        header_backup=None,
+        luks_erase=None,
+        imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+    )
+
+    result = generate_live_wipe_certificate(report, tmp_path / "certificates")
+
+    payload = json.loads(Path(result["json_path"]).read_text(encoding="utf-8"))
+    assert "Clear" in payload["nist_800_88_level"]
+    assert "BitLocker" in payload["nist_800_88_level"]
+    assert "Purge" not in payload["nist_800_88_level"]
+
+    html = Path(result["html_path"]).read_text(encoding="utf-8")
+    assert "Chiffrement BitLocker detecte : oui" in html

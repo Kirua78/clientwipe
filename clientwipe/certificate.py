@@ -78,6 +78,7 @@ code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; }}
 <li>Operateur : <code>{operator}</code></li>
 <li>Peripherique : <code>{device}</code></li>
 <li>Chiffrement LUKS detecte : {luks_detected}</li>
+<li>Chiffrement BitLocker detecte : {bitlocker_detected}</li>
 <li>Niveau NIST SP 800-88 atteint : <strong>{nist_level}</strong></li>
 <li>Sauvegarde de l'en-tete LUKS : {header_backup_line}</li>
 <li>Cle LUKS detruite : {luks_erased}</li>
@@ -115,6 +116,7 @@ code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; }}
 <li>Peripherique efface : <code>{device}</code></li>
 <li>Image de reference restauree : <code>{image_name}</code></li>
 <li>Chiffrement LUKS detecte : {luks_detected}</li>
+<li>Chiffrement BitLocker detecte : {bitlocker_detected}</li>
 <li>Niveau NIST SP 800-88 atteint : <strong>{nist_level}</strong></li>
 <li>Sauvegarde de l'en-tete LUKS : {header_backup_line}</li>
 <li>Cle LUKS detruite : {luks_erased}</li>
@@ -163,6 +165,17 @@ def _snapshot_line(snapshot: Optional[dict]) -> str:
     if snapshot.get("attempted"):
         return f"ECHEC ({snapshot.get('error')})"
     return f"non disponible ({snapshot.get('error')})"
+
+
+def _nist_level(luks_detected: bool, bitlocker_detected: bool) -> str:
+    if luks_detected:
+        return "Purge (effacement cryptographique, destruction de cle LUKS)"
+    if bitlocker_detected:
+        return (
+            "Clear (BitLocker detecte mais non detruit : non pris en charge, "
+            "voir bitlocker.py ; reimagage complet effectue)"
+        )
+    return "Clear (reimagage complet, pas de chiffrement detecte sur ce poste)"
 
 
 def generate_certificate(
@@ -241,11 +254,7 @@ def generate_full_wipe_certificate(
     generated_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     timestamp_slug = time.strftime("%Y%m%d-%H%M%S")
 
-    nist_level = (
-        "Purge (effacement cryptographique, destruction de cle LUKS)"
-        if report.luks_detected else
-        "Clear (reimagage complet, pas de chiffrement a detruire sur ce poste)"
-    )
+    nist_level = _nist_level(report.luks_detected, report.bitlocker_detected)
 
     payload = {
         "tool": "clientwipe",
@@ -284,6 +293,7 @@ def generate_full_wipe_certificate(
             operator=payload["operator"],
             device=report.device,
             luks_detected="oui" if report.luks_detected else "non",
+            bitlocker_detected="oui" if report.bitlocker_detected else "non",
             nist_level=nist_level,
             header_backup_line=header_backup_line,
             luks_erased=luks_erased,
@@ -320,11 +330,7 @@ def generate_live_wipe_certificate(
     generated_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     timestamp_slug = time.strftime("%Y%m%d-%H%M%S")
 
-    nist_level = (
-        "Purge (effacement cryptographique, destruction de cle LUKS)"
-        if report.luks_detected else
-        "Clear (reimagage complet, pas de chiffrement a detruire sur ce poste)"
-    )
+    nist_level = _nist_level(report.luks_detected, report.bitlocker_detected)
 
     payload = {
         "tool": "clientwipe",
@@ -365,6 +371,7 @@ def generate_live_wipe_certificate(
             device=report.device,
             image_name=report.image_name,
             luks_detected="oui" if report.luks_detected else "non",
+            bitlocker_detected="oui" if report.bitlocker_detected else "non",
             nist_level=nist_level,
             header_backup_line=header_backup_line,
             luks_erased=luks_erased,
