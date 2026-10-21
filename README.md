@@ -310,6 +310,15 @@ ete detruite par erreur mais le disque n'a pas encore ete reimage. Une fois le
 reimagage lance, cette sauvegarde, comme tout le reste, ne permet plus de
 revenir en arriere : c'est assume.
 
+**A BIEN COMPRENDRE** : la sauvegarde d'en-tete LUKS ne contient QUE la cle
+de chiffrement (quelques Ko), JAMAIS les donnees du client. ClientWipe NE
+CONSERVE AUCUNE COPIE DES DONNEES DU POSTE, nulle part, a aucun moment.
+Avant reimagage, les donnees restent lisibles UNIQUEMENT si l'en-tete est
+restaure avec l'ancien mot de passe (le disque physique n'a pas encore ete
+touche). Des que le reimagage a eu lieu, les donnees d'origine sont
+definitivement et irremediablement perdues : il n'existe aucun moyen, aucune
+sauvegarde, pour les recuperer a ce stade.
+
 ## Limitations connues
 
 - Le reimagage complet (etape finale du mode `full-reset`) suppose un
