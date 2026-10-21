@@ -173,7 +173,9 @@ def _cmd_trigger_full_reset(args: argparse.Namespace, config: Config) -> int:
 
     report = full_wipe(
         config.full_reset.device, config.full_reset.boot_entry,
-        header_backup_path=header_backup_path, dry_run=False,
+        header_backup_path=header_backup_path,
+        fallback_wipe_passes=config.full_reset.fallback_wipe_passes,
+        dry_run=False,
     )
     certificate = generate_full_wipe_certificate(
         report, Path(args.out_dir), args.gpg_key, args.operator, snapshot=snapshot_result,
@@ -252,7 +254,9 @@ def cmd_live_wipe(args: argparse.Namespace) -> int:
 
     report = live_wipe(
         args.device, args.image, Path(args.images_repository),
-        header_backup_path=header_backup_path, dry_run=False,
+        header_backup_path=header_backup_path,
+        fallback_wipe_passes=args.fallback_wipe_passes,
+        dry_run=False,
     )
     certificate = generate_live_wipe_certificate(report, Path(args.out_dir), args.gpg_key, args.operator)
 
@@ -263,6 +267,10 @@ def cmd_live_wipe(args: argparse.Namespace) -> int:
             print(f"Sauvegarde en-tete LUKS: {'OK' if backed_up else f'ECHEC ({report.header_backup.error})'}")
         erased = bool(report.luks_erase and report.luks_erase.erased)
         print(f"Cle LUKS detruite: {'OK' if erased else 'ECHEC (ou non tentee, voir sauvegarde ci-dessus)'}")
+    else:
+        dw = report.device_wipe
+        dw_ok = bool(dw and dw.completed)
+        print(f"Multi-passes de secours: {'OK' if dw_ok else f'ECHEC ({dw.error if dw else None})'}")
     imaging_ok = report.imaging.executed and report.imaging.returncode == 0
     print(f"Reimagage: {'OK' if imaging_ok else f'ECHEC ({report.imaging.error})'}")
     print(f"Certificat: {certificate['json_path']}")
@@ -347,6 +355,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_live_wipe.add_argument("--image", required=True, help="Nom de l'image golden a restaurer")
     p_live_wipe.add_argument("--images-repository", required=True, help="Chemin vers l'image golden (typiquement sur la cle USB montee)")
     p_live_wipe.add_argument("--header-backup-dir", default=None, help="Dossier (sur la cle USB) ou sauvegarder l'en-tete LUKS avant destruction")
+    p_live_wipe.add_argument(
+        "--fallback-wipe-passes", type=int, default=3,
+        help="Nombre de passes du multi-passes de secours, utilise seulement si aucun LUKS n'est detecte",
+    )
     p_live_wipe.add_argument("--out-dir", default="certificates")
     p_live_wipe.add_argument("--gpg-key", default=None)
     p_live_wipe.add_argument("--operator", default=None)

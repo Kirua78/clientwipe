@@ -82,6 +82,7 @@ code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; }}
 <li>Niveau NIST SP 800-88 atteint : <strong>{nist_level}</strong></li>
 <li>Sauvegarde de l'en-tete LUKS : {header_backup_line}</li>
 <li>Cle LUKS detruite : {luks_erased}</li>
+<li>Multi-passes de secours (si pas de LUKS) : {device_wipe_line}</li>
 <li>Entree GRUB de reimagage programmee : {boot_entry} ({reboot_scheduled})</li>
 <li>Genere le : {generated_at}</li>
 <li>Version ClientWipe : {version}</li>
@@ -120,6 +121,7 @@ code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; }}
 <li>Niveau NIST SP 800-88 atteint : <strong>{nist_level}</strong></li>
 <li>Sauvegarde de l'en-tete LUKS : {header_backup_line}</li>
 <li>Cle LUKS detruite : {luks_erased}</li>
+<li>Multi-passes de secours (si pas de LUKS) : {device_wipe_line}</li>
 <li>Reimagage : {imaging_status}</li>
 <li>Genere le : {generated_at}</li>
 <li>Version ClientWipe : {version}</li>
@@ -167,15 +169,25 @@ def _snapshot_line(snapshot: Optional[dict]) -> str:
     return f"non disponible ({snapshot.get('error')})"
 
 
+def _device_wipe_line(device_wipe: Optional[object]) -> str:
+    if device_wipe is None:
+        return "non applicable (LUKS present)"
+    if device_wipe.completed:
+        return f"OK ({device_wipe.method}, {device_wipe.passes} passes)"
+    if device_wipe.attempted:
+        return f"ECHEC ({device_wipe.error})"
+    return f"non execute ({device_wipe.error})"
+
+
 def _nist_level(luks_detected: bool, bitlocker_detected: bool) -> str:
     if luks_detected:
         return "Purge (effacement cryptographique, destruction de cle LUKS)"
     if bitlocker_detected:
         return (
-            "Clear (BitLocker detecte mais non detruit : non pris en charge, "
-            "voir bitlocker.py ; reimagage complet effectue)"
+            "Clear (BitLocker detecte mais non detruit, non pris en charge, "
+            "voir bitlocker.py ; multi-passes de secours puis reimagage complet effectues)"
         )
-    return "Clear (reimagage complet, pas de chiffrement detecte sur ce poste)"
+    return "Clear (pas de chiffrement detecte ; multi-passes de secours puis reimagage complet effectues)"
 
 
 def generate_certificate(
@@ -297,6 +309,7 @@ def generate_full_wipe_certificate(
             nist_level=nist_level,
             header_backup_line=header_backup_line,
             luks_erased=luks_erased,
+            device_wipe_line=_device_wipe_line(report.device_wipe),
             boot_entry=report.boot_entry,
             reboot_scheduled="OK" if report.reboot_scheduled.scheduled else "ECHEC",
             generated_at=generated_at,
@@ -375,6 +388,7 @@ def generate_live_wipe_certificate(
             nist_level=nist_level,
             header_backup_line=header_backup_line,
             luks_erased=luks_erased,
+            device_wipe_line=_device_wipe_line(report.device_wipe),
             imaging_status=imaging_status,
             generated_at=generated_at,
             version=__version__,

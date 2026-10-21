@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from .bitlocker import detect_bitlocker
+from .disk_wipe import DeviceWipeResult, wipe_device
 from .imaging import RebootScheduleResult, schedule_reimage_on_next_boot
 from .luks import LuksEraseResult, LuksHeaderBackupResult, backup_luks_header, detect_luks, erase_luks_key
 
@@ -17,6 +18,7 @@ class FullWipeReport:
     bitlocker_detected: bool
     header_backup: Optional[LuksHeaderBackupResult]
     luks_erase: Optional[LuksEraseResult]
+    device_wipe: Optional[DeviceWipeResult]
     reboot_scheduled: RebootScheduleResult
 
     @property
@@ -25,6 +27,9 @@ class FullWipeReport:
             if self.header_backup is not None and not self.header_backup.backed_up:
                 return False
             if self.luks_erase is None or not self.luks_erase.erased:
+                return False
+        else:
+            if self.device_wipe is None or not self.device_wipe.completed:
                 return False
         return self.reboot_scheduled.scheduled
 
@@ -36,6 +41,7 @@ class FullWipeReport:
             "bitlocker_detected": self.bitlocker_detected,
             "header_backup": asdict(self.header_backup) if self.header_backup else None,
             "luks_erase": asdict(self.luks_erase) if self.luks_erase else None,
+            "device_wipe": asdict(self.device_wipe) if self.device_wipe else None,
             "reboot_scheduled": asdict(self.reboot_scheduled),
             "passed": self.passed,
         }
@@ -45,6 +51,7 @@ def full_wipe(
     device: str,
     boot_entry: str,
     header_backup_path: Optional[Path] = None,
+    fallback_wipe_passes: int = 3,
     dry_run: bool = True,
 ) -> FullWipeReport:
     """Reset every compartment of the machine: detect whether `device` is
@@ -61,14 +68,17 @@ def full_wipe(
 
     When `device` isn't LUKS-encrypted, it's also checked for BitLocker
     (Windows) and reported as such (see bitlocker.py for why that's
-    detection-only, not erasure): either way the flow falls back to
-    reimage-only, still a genuine full disk reset, just without the
-    instant-erase guarantee.
+    detection-only, not erasure). Either way, a multi-pass overwrite of the
+    whole device runs as a fallback (see disk_wipe.py): slower than LUKS
+    key destruction, but it also destroys any BitLocker metadata along
+    with the rest, since there is no equivalent of `cryptsetup erase` for
+    that format.
     """
     detection = detect_luks(device)
 
     header_backup: Optional[LuksHeaderBackupResult] = None
     luks_erase: Optional[LuksEraseResult] = None
+    device_wipe: Optional[DeviceWipeResult] = None
     bitlocker_detected = False
 
     if detection.is_luks:
@@ -81,6 +91,7 @@ def full_wipe(
             luks_erase = erase_luks_key(device, dry_run=dry_run)
     else:
         bitlocker_detected = detect_bitlocker(device).is_bitlocker
+        device_wipe = wipe_device(device, passes=fallback_wipe_passes, dry_run=dry_run)
 
     reboot_scheduled = schedule_reimage_on_next_boot(boot_entry, dry_run=dry_run)
 
@@ -91,5 +102,6 @@ def full_wipe(
         bitlocker_detected=bitlocker_detected,
         header_backup=header_backup,
         luks_erase=luks_erase,
+        device_wipe=device_wipe,
         reboot_scheduled=reboot_scheduled,
     )

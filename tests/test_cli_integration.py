@@ -111,6 +111,7 @@ def _fake_full_wipe_report():
         boot_entry="Clonezilla Recovery",
         luks_detected=True,
         bitlocker_detected=False,
+        device_wipe=None,
         header_backup=None,
         luks_erase=LuksEraseResult(device="/dev/sda3", attempted=True, erased=True),
         reboot_scheduled=RebootScheduleResult(boot_entry="Clonezilla Recovery", attempted=True, scheduled=True),
@@ -129,7 +130,7 @@ def test_trigger_full_reset_happy_path_reboots_by_default(tmp_path, monkeypatch,
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(cli, "full_wipe", lambda device, boot_entry, header_backup_path=None, dry_run=False: _fake_full_wipe_report())
+    monkeypatch.setattr(cli, "full_wipe", lambda device, boot_entry, header_backup_path=None, fallback_wipe_passes=3, dry_run=False: _fake_full_wipe_report())
     reboot_calls = []
     monkeypatch.setattr(cli, "reboot_now", lambda dry_run: reboot_calls.append(dry_run) or True)
 
@@ -161,7 +162,7 @@ def test_trigger_full_reset_no_auto_reboot_skips_reboot(tmp_path, monkeypatch, c
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(cli, "full_wipe", lambda device, boot_entry, header_backup_path=None, dry_run=False: _fake_full_wipe_report())
+    monkeypatch.setattr(cli, "full_wipe", lambda device, boot_entry, header_backup_path=None, fallback_wipe_passes=3, dry_run=False: _fake_full_wipe_report())
     reboot_calls = []
     monkeypatch.setattr(cli, "reboot_now", lambda dry_run: reboot_calls.append(dry_run) or True)
 
@@ -207,13 +208,14 @@ def test_live_wipe_happy_path(tmp_path, monkeypatch, capsys):
         image_name="golden-kali",
         luks_detected=True,
         bitlocker_detected=False,
+        device_wipe=None,
         header_backup=None,
         luks_erase=LuksEraseResult(device="/dev/sda", attempted=True, erased=True),
         imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
     )
     monkeypatch.setattr(
         cli, "live_wipe",
-        lambda device, image, images_repository, header_backup_path=None, dry_run=False: fake_report,
+        lambda device, image, images_repository, header_backup_path=None, fallback_wipe_passes=3, dry_run=False: fake_report,
     )
 
     exit_code = main([
