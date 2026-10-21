@@ -1,7 +1,9 @@
 from clientwipe import imaging
 
 
-def test_restore_golden_image_dry_run_does_not_execute(tmp_path):
+def test_restore_golden_image_dry_run_does_not_execute(tmp_path, monkeypatch):
+    monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
+
     result = imaging.restore_golden_image("golden-kali", "/dev/sda", tmp_path, dry_run=True)
 
     assert result.executed is False
@@ -9,7 +11,21 @@ def test_restore_golden_image_dry_run_does_not_execute(tmp_path):
     assert "ocs-sr" in result.command[0]
 
 
+def test_restore_golden_image_fails_cleanly_without_ocs_sr(tmp_path, monkeypatch):
+    # Real-condition finding (clientwipe live-wipe on a Kali Live session
+    # without Clonezilla installed): subprocess.run() would otherwise raise
+    # FileNotFoundError and crash the caller instead of failing cleanly.
+    monkeypatch.setattr(imaging.shutil, "which", lambda name: None)
+
+    result = imaging.restore_golden_image("golden-kali", "/dev/sda", tmp_path, dry_run=False)
+
+    assert result.executed is False
+    assert "ocs-sr" in result.error
+
+
 def test_restore_golden_image_executes_when_confirmed(tmp_path, monkeypatch):
+    monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
+
     calls = {}
 
     class FakeCompleted:
@@ -26,9 +42,21 @@ def test_restore_golden_image_executes_when_confirmed(tmp_path, monkeypatch):
 
     assert result.executed is True
     assert result.returncode == 0
+    assert result.error is None
     assert calls["cwd"] == str(tmp_path)
     assert "golden-kali" in calls["command"]
     assert "/dev/sda" in calls["command"]
+
+
+def test_restore_golden_image_reports_error_on_nonzero_returncode(tmp_path, monkeypatch):
+    monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
+    monkeypatch.setattr(imaging.subprocess, "run", lambda command, cwd=None, check=False: type("R", (), {"returncode": 1})())
+
+    result = imaging.restore_golden_image("golden-kali", "/dev/sda", tmp_path, dry_run=False)
+
+    assert result.executed is True
+    assert result.returncode == 1
+    assert "1" in result.error
 
 
 def test_schedule_reimage_dry_run_does_not_execute(monkeypatch):

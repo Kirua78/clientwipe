@@ -264,7 +264,7 @@ def cmd_live_wipe(args: argparse.Namespace) -> int:
         erased = bool(report.luks_erase and report.luks_erase.erased)
         print(f"Cle LUKS detruite: {'OK' if erased else 'ECHEC (ou non tentee, voir sauvegarde ci-dessus)'}")
     imaging_ok = report.imaging.executed and report.imaging.returncode == 0
-    print(f"Reimagage: {'OK' if imaging_ok else 'ECHEC'}")
+    print(f"Reimagage: {'OK' if imaging_ok else f'ECHEC ({report.imaging.error})'}")
     print(f"Certificat: {certificate['json_path']}")
 
     return 0 if report.passed else 1
@@ -276,7 +276,12 @@ def cmd_reset(args: argparse.Namespace) -> int:
     )
     print("Commande:", " ".join(result.command))
     if not result.executed:
-        print("Mode simulation (--confirm-reset non fourni) : aucune action effectuee.")
+        if result.error:
+            print(f"Non execute : {result.error}")
+        else:
+            print("Mode simulation (--confirm-reset non fourni) : aucune action effectuee.")
+    elif result.error:
+        print(result.error)
     return 0
 
 
