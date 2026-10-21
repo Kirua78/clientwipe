@@ -12,6 +12,7 @@ class ImagingResult:
     command: List[str]
     executed: bool
     returncode: Optional[int] = None
+    error: Optional[str] = None
 
 
 def restore_golden_image(
@@ -26,8 +27,13 @@ def restore_golden_image(
     opted into explicitly by the caller (CLI requires --confirm-reset).
     Requires Clonezilla installed on the host; this repository's demo/test
     environment doesn't have real imaging infrastructure, so this function
-    is unit-tested with `subprocess.run` mocked out rather than executed
-    for real.
+    is mostly unit-tested with `subprocess.run` mocked out. Real-condition
+    testing (clientwipe live-wipe on a Kali Live session without Clonezilla
+    installed) found that a plain subprocess.run() raises FileNotFoundError
+    when the binary itself is missing, crashing the caller instead of
+    failing cleanly like every other wrapper in this module, hence the
+    explicit `shutil.which` check below, matching detect_luks/erase_luks_key/
+    schedule_reimage_on_next_boot.
     """
     command = [
         "ocs-sr",
@@ -39,11 +45,19 @@ def restore_golden_image(
         "-p", "poweroff",
         "restoredisk", image_name, device,
     ]
+    if shutil.which("ocs-sr") is None:
+        return ImagingResult(command=command, executed=False, error="ocs-sr (Clonezilla) n'est pas installe")
+
     if dry_run:
         return ImagingResult(command=command, executed=False)
 
     completed = subprocess.run(command, cwd=str(images_repository), check=False)
-    return ImagingResult(command=command, executed=True, returncode=completed.returncode)
+    return ImagingResult(
+        command=command,
+        executed=True,
+        returncode=completed.returncode,
+        error=None if completed.returncode == 0 else f"ocs-sr a renvoye le code {completed.returncode}",
+    )
 
 
 @dataclass
