@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from .bitlocker import detect_bitlocker
+from .disk_wipe import DeviceWipeResult, wipe_device
 from .imaging import ImagingResult, restore_golden_image
 from .luks import LuksEraseResult, LuksHeaderBackupResult, backup_luks_header, detect_luks, erase_luks_key
 
@@ -17,6 +18,7 @@ class LiveWipeReport:
     bitlocker_detected: bool
     header_backup: Optional[LuksHeaderBackupResult]
     luks_erase: Optional[LuksEraseResult]
+    device_wipe: Optional[DeviceWipeResult]
     imaging: ImagingResult
 
     @property
@@ -25,6 +27,9 @@ class LiveWipeReport:
             if self.header_backup is not None and not self.header_backup.backed_up:
                 return False
             if self.luks_erase is None or not self.luks_erase.erased:
+                return False
+        else:
+            if self.device_wipe is None or not self.device_wipe.completed:
                 return False
         return self.imaging.executed and self.imaging.returncode == 0
 
@@ -36,6 +41,7 @@ class LiveWipeReport:
             "bitlocker_detected": self.bitlocker_detected,
             "header_backup": asdict(self.header_backup) if self.header_backup else None,
             "luks_erase": asdict(self.luks_erase) if self.luks_erase else None,
+            "device_wipe": asdict(self.device_wipe) if self.device_wipe else None,
             "imaging": asdict(self.imaging),
             "passed": self.passed,
         }
@@ -46,6 +52,7 @@ def live_wipe(
     image_name: str,
     images_repository: Path,
     header_backup_path: Optional[Path] = None,
+    fallback_wipe_passes: int = 3,
     dry_run: bool = True,
 ) -> LiveWipeReport:
     """Erase and reimage `device` immediately, from within a live boot
@@ -63,12 +70,14 @@ def live_wipe(
 
     When `device` isn't LUKS-encrypted, it's also checked for BitLocker
     (Windows) and reported as such; see bitlocker.py for why that's
-    detection-only. Either way the flow falls back to reimage-only.
+    detection-only. Either way, a multi-pass overwrite of the whole device
+    runs as a fallback (see disk_wipe.py) before reimaging.
     """
     detection = detect_luks(device)
 
     header_backup: Optional[LuksHeaderBackupResult] = None
     luks_erase: Optional[LuksEraseResult] = None
+    device_wipe: Optional[DeviceWipeResult] = None
     bitlocker_detected = False
 
     if detection.is_luks:
@@ -81,6 +90,7 @@ def live_wipe(
             luks_erase = erase_luks_key(device, dry_run=dry_run)
     else:
         bitlocker_detected = detect_bitlocker(device).is_bitlocker
+        device_wipe = wipe_device(device, passes=fallback_wipe_passes, dry_run=dry_run)
 
     imaging_result = restore_golden_image(image_name, device, images_repository, dry_run=dry_run)
 
@@ -91,5 +101,6 @@ def live_wipe(
         bitlocker_detected=bitlocker_detected,
         header_backup=header_backup,
         luks_erase=luks_erase,
+        device_wipe=device_wipe,
         imaging=imaging_result,
     )

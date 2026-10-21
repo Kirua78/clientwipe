@@ -16,6 +16,13 @@ full_reset:
   # de declenchement par erreur. Sans cette ligne, la destruction de cle
   # est definitive des la confirmation.
   # header_backup_dir: /mnt/clientwipe-usb/luks-headers
+  # Nombre de passes d'ecrasement utilisees UNIQUEMENT en filet de secours
+  # quand aucun LUKS n'est detecte (disque non chiffre, ou BitLocker que cet
+  # outil ne sait que detecter, pas effacer). Si LUKS est present, cette
+  # valeur est ignoree : la destruction de cle reste la methode utilisee,
+  # instantanee et niveau NIST 800-88 Purge. Sans LUKS, l'ecrasement
+  # multi-passes de tout le disque est lent (heures, pas secondes).
+  fallback_wipe_passes: 3
 
 # "targets" et "passes" ne servent qu'au mode --mode targeted (effacement
 # cible fichier par fichier, sans reimagage/redemarrage) : les chemins sont

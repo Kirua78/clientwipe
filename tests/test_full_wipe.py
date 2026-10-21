@@ -1,5 +1,6 @@
 from clientwipe import full_wipe as full_wipe_module
 from clientwipe.bitlocker import BitlockerDetectionResult
+from clientwipe.disk_wipe import DeviceWipeResult
 from clientwipe.imaging import RebootScheduleResult
 from clientwipe.luks import LuksDetectionResult, LuksEraseResult, LuksHeaderBackupResult
 
@@ -14,6 +15,10 @@ def test_full_wipe_skips_luks_erase_when_not_encrypted(monkeypatch):
         lambda device: BitlockerDetectionResult(device=device, is_bitlocker=False),
     )
     monkeypatch.setattr(
+        full_wipe_module, "wipe_device",
+        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
+    )
+    monkeypatch.setattr(
         full_wipe_module, "schedule_reimage_on_next_boot",
         lambda boot_entry, dry_run: RebootScheduleResult(boot_entry=boot_entry, attempted=True, scheduled=True),
     )
@@ -23,6 +28,7 @@ def test_full_wipe_skips_luks_erase_when_not_encrypted(monkeypatch):
     assert report.luks_detected is False
     assert report.bitlocker_detected is False
     assert report.luks_erase is None
+    assert report.device_wipe.completed is True
     assert report.passed is True
 
 
@@ -36,6 +42,10 @@ def test_full_wipe_reports_bitlocker_detected_when_not_luks(monkeypatch):
         lambda device: BitlockerDetectionResult(device=device, is_bitlocker=True),
     )
     monkeypatch.setattr(
+        full_wipe_module, "wipe_device",
+        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
+    )
+    monkeypatch.setattr(
         full_wipe_module, "schedule_reimage_on_next_boot",
         lambda boot_entry, dry_run: RebootScheduleResult(boot_entry=boot_entry, attempted=True, scheduled=True),
     )
@@ -45,9 +55,34 @@ def test_full_wipe_reports_bitlocker_detected_when_not_luks(monkeypatch):
     assert report.luks_detected is False
     assert report.bitlocker_detected is True
     assert report.luks_erase is None
-    # Still a valid full reset (reimage-only, Clear level): BitLocker
-    # detection doesn't block the operation, it's informational.
+    # Still a valid full reset (multi-pass wipe + reimage, Clear level):
+    # BitLocker detection doesn't block the operation, it's informational,
+    # and overwriting the whole device destroys its metadata too.
+    assert report.device_wipe.completed is True
     assert report.passed is True
+
+
+def test_full_wipe_fails_when_fallback_device_wipe_fails(monkeypatch):
+    monkeypatch.setattr(
+        full_wipe_module, "detect_luks",
+        lambda device: LuksDetectionResult(device=device, is_luks=False),
+    )
+    monkeypatch.setattr(
+        full_wipe_module, "detect_bitlocker",
+        lambda device: BitlockerDetectionResult(device=device, is_bitlocker=False),
+    )
+    monkeypatch.setattr(
+        full_wipe_module, "wipe_device",
+        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=False, error="boom"),
+    )
+    monkeypatch.setattr(
+        full_wipe_module, "schedule_reimage_on_next_boot",
+        lambda boot_entry, dry_run: RebootScheduleResult(boot_entry=boot_entry, attempted=True, scheduled=True),
+    )
+
+    report = full_wipe_module.full_wipe("/dev/sda", "Clonezilla Recovery", dry_run=False)
+
+    assert report.passed is False
 
 
 def test_full_wipe_erases_luks_key_when_encrypted(monkeypatch):
@@ -72,6 +107,7 @@ def test_full_wipe_erases_luks_key_when_encrypted(monkeypatch):
 
     assert report.luks_detected is True
     assert report.luks_erase.erased is True
+    assert report.device_wipe is None
     assert erase_calls["device"] == "/dev/sda3"
     assert report.passed is True
 
@@ -99,6 +135,14 @@ def test_full_wipe_fails_when_reboot_not_scheduled(monkeypatch):
     monkeypatch.setattr(
         full_wipe_module, "detect_luks",
         lambda device: LuksDetectionResult(device=device, is_luks=False),
+    )
+    monkeypatch.setattr(
+        full_wipe_module, "detect_bitlocker",
+        lambda device: BitlockerDetectionResult(device=device, is_bitlocker=False),
+    )
+    monkeypatch.setattr(
+        full_wipe_module, "wipe_device",
+        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
     )
     monkeypatch.setattr(
         full_wipe_module, "schedule_reimage_on_next_boot",

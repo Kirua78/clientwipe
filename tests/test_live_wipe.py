@@ -1,5 +1,6 @@
 from clientwipe import live_wipe as live_wipe_module
 from clientwipe.bitlocker import BitlockerDetectionResult
+from clientwipe.disk_wipe import DeviceWipeResult
 from clientwipe.imaging import ImagingResult
 from clientwipe.luks import LuksDetectionResult, LuksEraseResult, LuksHeaderBackupResult
 
@@ -14,6 +15,10 @@ def test_live_wipe_reimages_directly_without_luks(monkeypatch, tmp_path):
         lambda device: BitlockerDetectionResult(device=device, is_bitlocker=False),
     )
     monkeypatch.setattr(
+        live_wipe_module, "wipe_device",
+        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
+    )
+    monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
         lambda image_name, device, images_repository, dry_run: ImagingResult(
             command=["ocs-sr", "restoredisk", image_name, device], executed=True, returncode=0,
@@ -25,6 +30,7 @@ def test_live_wipe_reimages_directly_without_luks(monkeypatch, tmp_path):
     assert report.luks_detected is False
     assert report.bitlocker_detected is False
     assert report.luks_erase is None
+    assert report.device_wipe.completed is True
     assert report.imaging.returncode == 0
     assert report.passed is True
 
@@ -39,6 +45,10 @@ def test_live_wipe_reports_bitlocker_on_windows_target(monkeypatch, tmp_path):
         lambda device: BitlockerDetectionResult(device=device, is_bitlocker=True),
     )
     monkeypatch.setattr(
+        live_wipe_module, "wipe_device",
+        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
+    )
+    monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
         lambda image_name, device, images_repository, dry_run: ImagingResult(
             command=["ocs-sr", "restoredisk", image_name, device], executed=True, returncode=0,
@@ -49,7 +59,31 @@ def test_live_wipe_reports_bitlocker_on_windows_target(monkeypatch, tmp_path):
 
     assert report.bitlocker_detected is True
     assert report.luks_erase is None
+    assert report.device_wipe.completed is True
     assert report.passed is True
+
+
+def test_live_wipe_fails_when_fallback_device_wipe_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        live_wipe_module, "detect_luks",
+        lambda device: LuksDetectionResult(device=device, is_luks=False),
+    )
+    monkeypatch.setattr(
+        live_wipe_module, "detect_bitlocker",
+        lambda device: BitlockerDetectionResult(device=device, is_bitlocker=False),
+    )
+    monkeypatch.setattr(
+        live_wipe_module, "wipe_device",
+        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=False, error="boom"),
+    )
+    monkeypatch.setattr(
+        live_wipe_module, "restore_golden_image",
+        lambda image_name, device, images_repository, dry_run: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+    )
+
+    report = live_wipe_module.live_wipe("/dev/sda", "golden-kali", tmp_path, dry_run=False)
+
+    assert report.passed is False
 
 
 def test_live_wipe_erases_luks_before_reimaging(monkeypatch, tmp_path):
@@ -113,6 +147,14 @@ def test_live_wipe_fails_when_imaging_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(
         live_wipe_module, "detect_luks",
         lambda device: LuksDetectionResult(device=device, is_luks=False),
+    )
+    monkeypatch.setattr(
+        live_wipe_module, "detect_bitlocker",
+        lambda device: BitlockerDetectionResult(device=device, is_bitlocker=False),
+    )
+    monkeypatch.setattr(
+        live_wipe_module, "wipe_device",
+        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",

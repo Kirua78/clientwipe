@@ -105,6 +105,18 @@ flowchart LR
   fausse garantie de niveau "Purge". Un poste Windows chiffre BitLocker est
   donc traite au niveau "Clear" (reimagage complet), pas "Purge". Voir
   `clientwipe/bitlocker.py`.
+- **Multi-passes de secours sur le disque entier (uniquement si pas de LUKS)** :
+  quand aucun LUKS n'est detecte (disque non chiffre, ou BitLocker que cet
+  outil ne sait que detecter), le mode remise a zero complete et le mode cle
+  autonome ecrasent en plus l'integralite du peripherique avec des donnees
+  aleatoires (`shred`, ou repli pur Python si absent), configurable via
+  `fallback_wipe_passes` (defaut 3). Le but : renforcer le niveau "Clear"
+  dans ce cas degrade, en detruisant aussi les metadonnees de chiffrement
+  eventuelles, pas seulement les donnees visibles. Si LUKS est present, cette
+  etape est ignoree : la destruction de cle reste la seule methode utilisee,
+  instantanee, pas besoin d'ecraser des heures de donnees pour un resultat
+  cryptographiquement deja irreversible. Trace dans le certificat genere
+  (`clientwipe/disk_wipe.py`).
 - **Sanitisation ciblee (mode alternatif, `--mode targeted`)** : effacement
   multi-passes (`shred` si disponible, sinon repli pur Python) des
   emplacements definis dans un fichier de configuration YAML (projets Burp,
@@ -248,6 +260,7 @@ full_reset:
   device: /dev/sda3
   boot_entry: "Clonezilla Recovery"
   header_backup_dir: /mnt/clientwipe-usb/luks-headers  # optionnel, voir Fonctionnalites
+  fallback_wipe_passes: 3  # utilise uniquement si pas de LUKS detecte, voir Fonctionnalites
 
 # Mode targeted (--mode targeted, ou clientwipe run)
 passes: 3
