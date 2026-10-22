@@ -153,8 +153,15 @@ flowchart LR
 - **Inventaire des outils installes (cle autonome uniquement, optionnel)** :
   apres un `clientwipe live-wipe` reussi, si `--inventory-output-dir` est
   fourni, l'outil monte en lecture seule la partition racine qui vient
-  d'etre restauree et y lit la base `dpkg` pour lister tous les paquets
-  installes avec leur version exacte, ecrits dans `tool-inventory.json`.
+  d'etre restauree et combine deux sources dans `tool-inventory.json` :
+  - `dpkg_packages` : tous les paquets `apt`/`dpkg` installes avec leur
+    version exacte (la base `/var/lib/dpkg/status`), qui couvre l'ecrasante
+    majorite des outils sur un Kali standard ;
+  - `git_clones` : les outils installes manuellement par `git clone` dans
+    `/opt` (convention courante sur Kali pour ce qui n'est pas empaquete),
+    detectes par la presence d'un dossier `.git`, avec pour chacun l'URL du
+    remote, le hash du commit et le resultat de `git describe` (une version
+    semantique n'existe pas pour un clone git, le commit en tient lieu).
   But : confirmer que l'image restauree correspond bien au baseline attendu
   (memes outils, memes versions), pas un audit de la mission precedente sur
   le poste client. Uniquement disponible pour `live-wipe` : en mode
@@ -162,7 +169,9 @@ flowchart LR
   apres le redemarrage programme, une fois que clientwipe s'est deja arrete,
   donc rien a inspecter dans le meme run (voir `clientwipe/inventory.py`).
   Purement informatif : un echec de cette etape n'affecte pas le resultat
-  global de la sanitisation.
+  global de la sanitisation. Les outils installes par d'autres moyens
+  (pip/pipx, go install, npm global, binaires manuels hors `/opt`) ne sont
+  pas couverts pour l'instant.
 - **Mode demo sans risque** : `clientwipe demo` cree un faux poste (fausses
   cles SSH, faux projet Burp, faux historique shell...) pour que le cycle de
   sanitisation ciblee soit testable en une commande, sans toucher a la
