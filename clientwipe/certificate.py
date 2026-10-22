@@ -123,6 +123,7 @@ code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; }}
 <li>Cle LUKS detruite : {luks_erased}</li>
 <li>Multi-passes de secours (si pas de LUKS) : {device_wipe_line}</li>
 <li>Reimagage : {imaging_status}</li>
+<li>Inventaire des paquets installes (image restauree) : {tool_inventory_line}</li>
 <li>Genere le : {generated_at}</li>
 <li>Version ClientWipe : {version}</li>
 <li>Empreinte SHA-256 du rapport : <code>{sha256}</code></li>
@@ -177,6 +178,16 @@ def _device_wipe_line(device_wipe: Optional[object]) -> str:
     if device_wipe.attempted:
         return f"ECHEC ({device_wipe.error})"
     return f"non execute ({device_wipe.error})"
+
+
+def _tool_inventory_line(tool_inventory: Optional[object]) -> str:
+    if tool_inventory is None:
+        return "non demande"
+    if tool_inventory.completed:
+        return f"OK ({tool_inventory.package_count} paquets, {tool_inventory.output_path})"
+    if tool_inventory.attempted:
+        return f"ECHEC ({tool_inventory.error})"
+    return "non execute"
 
 
 def _nist_level(luks_detected: bool, bitlocker_detected: bool) -> str:
@@ -390,6 +401,7 @@ def generate_live_wipe_certificate(
             luks_erased=luks_erased,
             device_wipe_line=_device_wipe_line(report.device_wipe),
             imaging_status=imaging_status,
+            tool_inventory_line=_tool_inventory_line(report.tool_inventory),
             generated_at=generated_at,
             version=__version__,
             sha256=sha256,

@@ -150,6 +150,19 @@ flowchart LR
 - **Certificat d'audit** : rapport horodate (JSON + HTML) avec poste,
   operateur, methode, duree/peripherique, resultat de verification et
   empreinte SHA-256 ; signature GPG optionnelle si une cle est disponible.
+- **Inventaire des outils installes (cle autonome uniquement, optionnel)** :
+  apres un `clientwipe live-wipe` reussi, si `--inventory-output-dir` est
+  fourni, l'outil monte en lecture seule la partition racine qui vient
+  d'etre restauree et y lit la base `dpkg` pour lister tous les paquets
+  installes avec leur version exacte, ecrits dans `tool-inventory.json`.
+  But : confirmer que l'image restauree correspond bien au baseline attendu
+  (memes outils, memes versions), pas un audit de la mission precedente sur
+  le poste client. Uniquement disponible pour `live-wipe` : en mode
+  remise a zero complete (`full_reset`), la restauration reelle se produit
+  apres le redemarrage programme, une fois que clientwipe s'est deja arrete,
+  donc rien a inspecter dans le meme run (voir `clientwipe/inventory.py`).
+  Purement informatif : un echec de cette etape n'affecte pas le resultat
+  global de la sanitisation.
 - **Mode demo sans risque** : `clientwipe demo` cree un faux poste (fausses
   cles SSH, faux projet Burp, faux historique shell...) pour que le cycle de
   sanitisation ciblee soit testable en une commande, sans toucher a la
