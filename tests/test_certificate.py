@@ -5,6 +5,7 @@ from clientwipe.certificate import generate_certificate, generate_full_wipe_cert
 from clientwipe.config import Config, SanitizeTarget
 from clientwipe.full_wipe import FullWipeReport
 from clientwipe.imaging import ImagingResult, RebootScheduleResult
+from clientwipe.inventory import ToolInventoryResult
 from clientwipe.live_wipe import LiveWipeReport
 from clientwipe.luks import LuksEraseResult
 from clientwipe.sanitize import sanitize
@@ -147,6 +148,7 @@ def test_generate_live_wipe_certificate_reports_pass(tmp_path):
         header_backup=None,
         luks_erase=LuksEraseResult(device="/dev/sda", attempted=True, erased=True),
         imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+        tool_inventory=None,
     )
 
     result = generate_live_wipe_certificate(report, tmp_path / "certificates", operator="test-operator")
@@ -161,6 +163,31 @@ def test_generate_live_wipe_certificate_reports_pass(tmp_path):
     assert "REMISE A ZERO REUSSIE" in html
 
 
+def test_generate_live_wipe_certificate_reports_tool_inventory(tmp_path):
+    report = LiveWipeReport(
+        device="/dev/sda",
+        image_name="golden-kali",
+        luks_detected=True,
+        bitlocker_detected=False,
+        device_wipe=None,
+        header_backup=None,
+        luks_erase=LuksEraseResult(device="/dev/sda", attempted=True, erased=True),
+        imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+        tool_inventory=ToolInventoryResult(
+            device="/dev/sda", root_partition="/dev/sda3", attempted=True, completed=True,
+            package_count=1842, output_path="/mnt/key/tool-inventory.json",
+        ),
+    )
+
+    result = generate_live_wipe_certificate(report, tmp_path / "certificates")
+
+    payload = json.loads(Path(result["json_path"]).read_text(encoding="utf-8"))
+    assert payload["live_wipe"]["tool_inventory"]["package_count"] == 1842
+
+    html = Path(result["html_path"]).read_text(encoding="utf-8")
+    assert "1842 paquets" in html
+
+
 def test_generate_live_wipe_certificate_reports_failure_when_imaging_fails(tmp_path):
     report = LiveWipeReport(
         device="/dev/sda",
@@ -171,6 +198,7 @@ def test_generate_live_wipe_certificate_reports_failure_when_imaging_fails(tmp_p
         header_backup=None,
         luks_erase=None,
         imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=1),
+        tool_inventory=None,
     )
 
     result = generate_live_wipe_certificate(report, tmp_path / "certificates")
@@ -190,6 +218,7 @@ def test_generate_live_wipe_certificate_reports_clear_level_with_bitlocker(tmp_p
         header_backup=None,
         luks_erase=None,
         imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+        tool_inventory=None,
     )
 
     result = generate_live_wipe_certificate(report, tmp_path / "certificates")

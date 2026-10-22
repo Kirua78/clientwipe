@@ -252,10 +252,13 @@ def cmd_live_wipe(args: argparse.Namespace) -> int:
         device_slug = args.device.replace("/", "_")
         header_backup_path = Path(args.header_backup_dir) / f"{device_slug}-{timestamp}.luks-header"
 
+    inventory_output_dir = Path(args.inventory_output_dir) if args.inventory_output_dir else None
+
     report = live_wipe(
         args.device, args.image, Path(args.images_repository),
         header_backup_path=header_backup_path,
         fallback_wipe_passes=args.fallback_wipe_passes,
+        inventory_output_dir=inventory_output_dir,
         dry_run=False,
     )
     certificate = generate_live_wipe_certificate(report, Path(args.out_dir), args.gpg_key, args.operator)
@@ -273,6 +276,12 @@ def cmd_live_wipe(args: argparse.Namespace) -> int:
         print(f"Multi-passes de secours: {'OK' if dw_ok else f'ECHEC ({dw.error if dw else None})'}")
     imaging_ok = report.imaging.executed and report.imaging.returncode == 0
     print(f"Reimagage: {'OK' if imaging_ok else f'ECHEC ({report.imaging.error})'}")
+    if inventory_output_dir is not None:
+        ti = report.tool_inventory
+        if ti is not None and ti.completed:
+            print(f"Inventaire des paquets: OK ({ti.package_count} paquets, {ti.output_path})")
+        else:
+            print(f"Inventaire des paquets: ECHEC ({ti.error if ti else 'non execute'})")
     print(f"Certificat: {certificate['json_path']}")
 
     return 0 if report.passed else 1
@@ -358,6 +367,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_live_wipe.add_argument(
         "--fallback-wipe-passes", type=int, default=3,
         help="Nombre de passes du multi-passes de secours, utilise seulement si aucun LUKS n'est detecte",
+    )
+    p_live_wipe.add_argument(
+        "--inventory-output-dir", default=None,
+        help="Dossier ou ecrire tool-inventory.json (paquets installes sur l'image restauree) ; omis = pas d'inventaire",
     )
     p_live_wipe.add_argument("--out-dir", default="certificates")
     p_live_wipe.add_argument("--gpg-key", default=None)

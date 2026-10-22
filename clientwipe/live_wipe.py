@@ -7,6 +7,7 @@ from typing import Optional
 from .bitlocker import detect_bitlocker
 from .disk_wipe import DeviceWipeResult, wipe_device
 from .imaging import ImagingResult, restore_golden_image
+from .inventory import ToolInventoryResult, inventory_installed_packages
 from .luks import LuksEraseResult, LuksHeaderBackupResult, backup_luks_header, detect_luks, erase_luks_key
 
 
@@ -20,6 +21,7 @@ class LiveWipeReport:
     luks_erase: Optional[LuksEraseResult]
     device_wipe: Optional[DeviceWipeResult]
     imaging: ImagingResult
+    tool_inventory: Optional[ToolInventoryResult]
 
     @property
     def passed(self) -> bool:
@@ -43,6 +45,7 @@ class LiveWipeReport:
             "luks_erase": asdict(self.luks_erase) if self.luks_erase else None,
             "device_wipe": asdict(self.device_wipe) if self.device_wipe else None,
             "imaging": asdict(self.imaging),
+            "tool_inventory": asdict(self.tool_inventory) if self.tool_inventory else None,
             "passed": self.passed,
         }
 
@@ -53,6 +56,8 @@ def live_wipe(
     images_repository: Path,
     header_backup_path: Optional[Path] = None,
     fallback_wipe_passes: int = 3,
+    inventory_output_dir: Optional[Path] = None,
+    inventory_mount_point: Path = Path("/mnt/clientwipe-inventory"),
     dry_run: bool = True,
 ) -> LiveWipeReport:
     """Erase and reimage `device` immediately, from within a live boot
@@ -72,6 +77,12 @@ def live_wipe(
     (Windows) and reported as such; see bitlocker.py for why that's
     detection-only. Either way, a multi-pass overwrite of the whole device
     runs as a fallback (see disk_wipe.py) before reimaging.
+
+    If `inventory_output_dir` is set and the reimage succeeds, the restored
+    root partition is mounted read-only and its installed packages (name and
+    version) are dumped to a JSON file there, confirming the restored system
+    matches the expected golden-image baseline. See inventory.py; this is
+    informational only and does not affect LiveWipeReport.passed.
     """
     detection = detect_luks(device)
 
@@ -94,6 +105,10 @@ def live_wipe(
 
     imaging_result = restore_golden_image(image_name, device, images_repository, dry_run=dry_run)
 
+    tool_inventory: Optional[ToolInventoryResult] = None
+    if inventory_output_dir is not None and imaging_result.executed and imaging_result.returncode == 0:
+        tool_inventory = inventory_installed_packages(device, inventory_output_dir, inventory_mount_point, dry_run=dry_run)
+
     return LiveWipeReport(
         device=device,
         image_name=image_name,
@@ -103,4 +118,5 @@ def live_wipe(
         luks_erase=luks_erase,
         device_wipe=device_wipe,
         imaging=imaging_result,
+        tool_inventory=tool_inventory,
     )
