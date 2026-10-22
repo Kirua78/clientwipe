@@ -184,7 +184,10 @@ def _tool_inventory_line(tool_inventory: Optional[object]) -> str:
     if tool_inventory is None:
         return "non demande"
     if tool_inventory.completed:
-        return f"OK ({tool_inventory.package_count} paquets, {tool_inventory.output_path})"
+        return (
+            f"OK ({tool_inventory.package_count} paquets dpkg, "
+            f"{tool_inventory.git_clone_count} outils git-clone dans /opt, {tool_inventory.output_path})"
+        )
     if tool_inventory.attempted:
         return f"ECHEC ({tool_inventory.error})"
     return "non execute"

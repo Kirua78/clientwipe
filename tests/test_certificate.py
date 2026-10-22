@@ -175,7 +175,7 @@ def test_generate_live_wipe_certificate_reports_tool_inventory(tmp_path):
         imaging=ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
         tool_inventory=ToolInventoryResult(
             device="/dev/sda", root_partition="/dev/sda3", attempted=True, completed=True,
-            package_count=1842, output_path="/mnt/key/tool-inventory.json",
+            package_count=1842, git_clone_count=5, output_path="/mnt/key/tool-inventory.json",
         ),
     )
 
@@ -183,9 +183,11 @@ def test_generate_live_wipe_certificate_reports_tool_inventory(tmp_path):
 
     payload = json.loads(Path(result["json_path"]).read_text(encoding="utf-8"))
     assert payload["live_wipe"]["tool_inventory"]["package_count"] == 1842
+    assert payload["live_wipe"]["tool_inventory"]["git_clone_count"] == 5
 
     html = Path(result["html_path"]).read_text(encoding="utf-8")
     assert "1842 paquets" in html
+    assert "5 outils git-clone" in html
 
 
 def test_generate_live_wipe_certificate_reports_failure_when_imaging_fails(tmp_path):
