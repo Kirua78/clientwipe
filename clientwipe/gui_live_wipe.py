@@ -30,6 +30,22 @@ COLOR_NEUTRAL = "#0e1510"
 COLOR_NEUTRAL_DARK = "#050a06"
 FONT_MONO = "Monospace"
 
+DRAGON_ART = r"""
+                 ___====-_  _-====___
+           _--^^^#####//      \\#####^^^--_
+        _-^##########// (    ) \\##########^-_
+       -############//  |\^^/|  \\############-
+     _/############//   (@::@)   \\############\_
+    /#############((     \\//     ))#############\
+   -###############\\    (oo)    //###############-
+  -#################\\  / VV \  //#################-
+ -###################\\/      \//###################-
+_#/|##########/\######(   /\   )######/\##########|\#_
+|/ |#/\#/\#/\/  \#/\##\  |  |  /##/\#/  \/\#/\#/\#| \|
+`  |/  V  V  `   V  \#\| |  | |/#/  V   '  V  V  \|  '
+   `   `  `      `   / | |  | | \   '      '  '   '
+""".strip("\n")
+
 
 @dataclass
 class CandidateDevice:
@@ -269,6 +285,11 @@ class LiveWipeGuiApp:
             "Choisissez le disque a nettoyer. Le disque de demarrage de cette cle "
             "est automatiquement exclu de la liste.",
         )
+
+        tk.Label(
+            self.container, text=DRAGON_ART, font=(FONT_MONO, 8),
+            fg=COLOR_ACCENT, bg=COLOR_BG, justify="left",
+        ).pack(pady=(0, 20))
 
         excluded = boot_device()
         devices = list_candidate_devices(exclude=excluded)
