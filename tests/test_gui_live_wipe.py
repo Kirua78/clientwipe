@@ -57,6 +57,32 @@ def test_list_candidate_devices_returns_empty_on_lsblk_failure(monkeypatch):
     assert gui_live_wipe.list_candidate_devices() == []
 
 
+def test_find_images_repository_lists_partitions_not_only_disks(monkeypatch, tmp_path):
+    # Regression test: an earlier version passed lsblk the -d flag, which
+    # hides partitions and only lists whole disks, so the golden image
+    # partition (sda4, ntfs) was never seen on real hardware even though a
+    # manual mount of it worked fine.
+    lsblk_calls = []
+
+    def fake_run(cmd, capture_output=True, text=True, check=False):
+        if cmd[0] == "lsblk":
+            lsblk_calls.append(cmd)
+            return FakeCompleted("/dev/sdb4 part\n")
+        if cmd[0] == "findmnt":
+            return FakeCompleted("")
+        if cmd[0] == "mount":
+            (tmp_path / "mnt" / "KaliState0").mkdir(parents=True, exist_ok=True)
+            return FakeCompleted()
+        return FakeCompleted()
+
+    monkeypatch.setattr(gui_live_wipe.subprocess, "run", fake_run)
+
+    found = gui_live_wipe.find_images_repository("KaliState0", tmp_path / "mnt")
+
+    assert found == tmp_path / "mnt"
+    assert lsblk_calls == [["lsblk", "-no", "PATH,TYPE"]]
+
+
 def test_find_images_repository_uses_already_mounted_partition(monkeypatch, tmp_path):
     existing_mount = tmp_path / "already-mounted"
     (existing_mount / "KaliState0").mkdir(parents=True)

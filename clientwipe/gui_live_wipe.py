@@ -84,7 +84,7 @@ def find_images_repository(
     tried again on the next candidate otherwise.
     """
     completed = subprocess.run(
-        ["lsblk", "-ndo", "PATH,TYPE"], capture_output=True, text=True, check=False,
+        ["lsblk", "-no", "PATH,TYPE"], capture_output=True, text=True, check=False,
     )
     if completed.returncode != 0:
         return None
