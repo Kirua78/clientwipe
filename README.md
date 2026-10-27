@@ -126,14 +126,19 @@ flowchart LR
   quand aucun LUKS n'est detecte (disque non chiffre, ou BitLocker que cet
   outil ne sait que detecter), le mode remise a zero complete et le mode cle
   autonome effacent en plus l'integralite du peripherique. Sur une
-  partition NVMe avec `nvme-cli` installe, ceci passe par un effacement
-  cryptographique natif du controleur (`nvme format --ses=2`) : quelques
-  secondes, pas des heures, et une vraie garantie de niveau "Purge" au sens
-  NIST 800-88 (la commande agit sous le niveau logique vu par l'OS, donc
-  couvre aussi les blocs reaffectes par le wear-leveling qu'un ecrasement
-  logiciel ne peut pas toujours atteindre). Si ce n'est pas possible (pas du
-  NVMe, `nvme-cli` absent, ou le controleur refuse la commande), repli sur un
-  ecrasement logiciel multi-passes avec des donnees aleatoires (`shred`, ou
+  partition NVMe avec `nvme-cli` installe, ceci passe par le controleur
+  lui-meme via la commande Format NVM : quelques secondes, pas des heures,
+  et une vraie garantie de niveau "Purge" au sens NIST 800-88 (la commande
+  agit sous le niveau logique vu par l'OS, donc couvre aussi les blocs
+  reaffectes par le wear-leveling qu'un ecrasement logiciel ne peut pas
+  toujours atteindre). Deux variantes sont tentees dans l'ordre : effacement
+  cryptographique (`nvme format --ses=2`, le plus fort) puis, si le
+  controleur le refuse (frequent sur des SSD grand public, meme recents :
+  observe en conditions reelles), effacement des donnees utilisateur
+  (`nvme format --ses=1`, plus largement supporte, toujours au niveau
+  controleur). Si aucune des deux n'est possible (pas du NVMe, `nvme-cli`
+  absent, ou le controleur refuse les deux), repli sur un ecrasement
+  logiciel multi-passes avec des donnees aleatoires (`shred`, ou
   repli pur Python si absent), configurable via `fallback_wipe_passes`
   (defaut 1 passe, suffisant pour le niveau "Clear" selon NIST 800-88 ; les
   recommandations historiques a plusieurs passes type DoD 5220.22-M sont

@@ -25,7 +25,30 @@ def test_wipe_device_uses_nvme_crypto_erase_when_available(monkeypatch):
     assert calls == [["nvme", "format", "/dev/nvme0n1", "--ses=2", "--force"]]
 
 
-def test_wipe_device_falls_back_to_shred_when_nvme_format_fails(monkeypatch):
+def test_wipe_device_falls_back_to_user_data_erase_when_crypto_erase_fails(monkeypatch):
+    monkeypatch.setattr(disk_wipe.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    calls = []
+
+    def fake_run(cmd, capture_output=True, text=True, check=False):
+        calls.append(cmd)
+        if cmd == ["nvme", "format", "/dev/nvme0n1", "--ses=2", "--force"]:
+            return FakeCompleted(returncode=1, stderr="Invalid Format: The LBA Format specified is not supported")
+        return FakeCompleted(returncode=0)
+
+    monkeypatch.setattr(disk_wipe.subprocess, "run", fake_run)
+
+    result = disk_wipe.wipe_device("/dev/nvme0n1", passes=3, dry_run=False)
+
+    assert result.method == "nvme-format-user-data-erase"
+    assert result.completed is True
+    assert calls == [
+        ["nvme", "format", "/dev/nvme0n1", "--ses=2", "--force"],
+        ["nvme", "format", "/dev/nvme0n1", "--ses=1", "--force"],
+    ]
+
+
+def test_wipe_device_falls_back_to_shred_when_both_nvme_formats_fail(monkeypatch):
     monkeypatch.setattr(disk_wipe.shutil, "which", lambda name: f"/usr/bin/{name}")
 
     calls = []
@@ -33,7 +56,7 @@ def test_wipe_device_falls_back_to_shred_when_nvme_format_fails(monkeypatch):
     def fake_run(cmd, capture_output=True, text=True, check=False):
         calls.append(cmd)
         if cmd[0] == "nvme":
-            return FakeCompleted(returncode=1, stderr="Crypto erase not supported")
+            return FakeCompleted(returncode=1, stderr="Invalid Format: The LBA Format specified is not supported")
         return FakeCompleted(returncode=0)
 
     monkeypatch.setattr(disk_wipe.subprocess, "run", fake_run)
@@ -43,7 +66,8 @@ def test_wipe_device_falls_back_to_shred_when_nvme_format_fails(monkeypatch):
     assert result.method == "shred"
     assert result.completed is True
     assert calls[0] == ["nvme", "format", "/dev/nvme0n1", "--ses=2", "--force"]
-    assert calls[1] == ["shred", "--iterations=3", "--zero", "/dev/nvme0n1"]
+    assert calls[1] == ["nvme", "format", "/dev/nvme0n1", "--ses=1", "--force"]
+    assert calls[2] == ["shred", "--iterations=3", "--zero", "/dev/nvme0n1"]
 
 
 def test_wipe_device_skips_nvme_path_when_nvme_cli_missing(monkeypatch):

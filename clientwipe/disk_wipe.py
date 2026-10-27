@@ -31,34 +31,48 @@ def _is_nvme_namespace(device: str) -> bool:
     return bool(_NVME_NAMESPACE_RE.match(device))
 
 
-def _nvme_crypto_erase(device: str) -> DeviceWipeResult:
-    """Cryptographic erase via the NVMe controller's own Format NVM command
-    (ses=2), through nvme-cli. Near instant regardless of capacity, and
-    unlike a software overwrite it also reaches blocks the OS can never
-    address directly (over-provisioning, wear-leveled remaps), so this is
-    the Purge-level method NIST SP 800-88 actually recommends for
-    NVMe/SSD media, well ahead of a multi-hour software overwrite.
-    """
+def _nvme_format_erase(device: str, ses: int, method: str) -> DeviceWipeResult:
     completed = subprocess.run(
-        ["nvme", "format", device, "--ses=2", "--force"],
+        ["nvme", "format", device, f"--ses={ses}", "--force"],
         capture_output=True, text=True, check=False,
     )
     ok = completed.returncode == 0
     return DeviceWipeResult(
-        device=device, passes=1, method="nvme-format-crypto-erase", attempted=True, completed=ok,
+        device=device, passes=1, method=method, attempted=True, completed=ok,
         error=None if ok else (completed.stderr.strip() or completed.stdout.strip() or "nvme format a echoue"),
     )
+
+
+def _nvme_erase(device: str) -> DeviceWipeResult:
+    """Erase via the NVMe controller's own Format NVM command, through
+    nvme-cli. Near instant regardless of capacity, and unlike a software
+    overwrite it also reaches blocks the OS can never address directly
+    (over-provisioning, wear-leveled remaps), so this is a Purge-level
+    method NIST SP 800-88 recognizes for NVMe/SSD media, well ahead of a
+    multi-hour software overwrite.
+
+    Tries Cryptographic Erase (ses=2) first: strongest and still instant.
+    Not every controller implements it though (observed on real consumer
+    hardware: rejected with an "Invalid Format" status, not a clearer
+    "unsupported" one), so User Data Erase (ses=1) is tried next if it
+    fails: a weaker but still controller-level, NIST-recognized Purge
+    technique, and much more widely supported.
+    """
+    crypto_erase = _nvme_format_erase(device, ses=2, method="nvme-format-crypto-erase")
+    if crypto_erase.completed:
+        return crypto_erase
+    return _nvme_format_erase(device, ses=1, method="nvme-format-user-data-erase")
 
 
 def wipe_device(device: str, passes: int = 3, dry_run: bool = True) -> DeviceWipeResult:
     """Erase an entire block device.
 
     On an NVMe namespace with nvme-cli available, tries a controller-level
-    cryptographic erase first (see _nvme_crypto_erase): seconds, not hours,
-    and a real Purge-level guarantee since it operates below the OS's view
-    of the drive. Falls back to a multi-pass software overwrite only when
-    that is not possible (not NVMe, nvme-cli missing, or the controller
-    rejects the command, e.g. no crypto erase support).
+    erase first (see _nvme_erase): seconds, not hours, and a real
+    Purge-level guarantee since it operates below the OS's view of the
+    drive. Falls back to a multi-pass software overwrite only when that is
+    not possible (not NVMe, nvme-cli missing, or the controller rejects
+    both Format NVM variants it tries).
 
     The software fallback is used when no LUKS key is available to destroy
     either (no encryption at all, or BitLocker, which this tool can't
@@ -78,7 +92,7 @@ def wipe_device(device: str, passes: int = 3, dry_run: bool = True) -> DeviceWip
             return DeviceWipeResult(
                 device=device, passes=1, method="nvme-format-crypto-erase", attempted=False, completed=False,
             )
-        nvme_result = _nvme_crypto_erase(device)
+        nvme_result = _nvme_erase(device)
         if nvme_result.completed:
             return nvme_result
 
