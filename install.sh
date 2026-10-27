@@ -60,6 +60,13 @@ if ! command -v grub-reboot >/dev/null 2>&1; then
   echo "    reimagage. Generalement fourni par le paquet grub2-common."
 fi
 
+if ! command -v nvme >/dev/null 2>&1; then
+  echo "==> nvme-cli n'est pas installe : l'effacement de secours sur une"
+  echo "    cible NVMe sans LUKS utilisera le repli logiciel (shred), plus"
+  echo "    lent, au lieu de l'effacement cryptographique natif du"
+  echo "    controleur. Pour l'activer : sudo apt install nvme-cli."
+fi
+
 cat <<'EOF'
 
 Installation terminee.

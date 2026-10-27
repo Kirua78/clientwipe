@@ -16,13 +16,18 @@ full_reset:
   # de declenchement par erreur. Sans cette ligne, la destruction de cle
   # est definitive des la confirmation.
   # header_backup_dir: /mnt/clientwipe-usb/luks-headers
-  # Nombre de passes d'ecrasement utilisees UNIQUEMENT en filet de secours
-  # quand aucun LUKS n'est detecte (disque non chiffre, ou BitLocker que cet
-  # outil ne sait que detecter, pas effacer). Si LUKS est present, cette
-  # valeur est ignoree : la destruction de cle reste la methode utilisee,
-  # instantanee et niveau NIST 800-88 Purge. Sans LUKS, l'ecrasement
-  # multi-passes de tout le disque est lent (heures, pas secondes).
-  fallback_wipe_passes: 3
+  # Nombre de passes d'ecrasement logiciel utilisees UNIQUEMENT en tout
+  # dernier recours : aucun LUKS detecte (disque non chiffre, ou BitLocker
+  # que cet outil ne sait que detecter, pas effacer) ET effacement natif
+  # NVMe impossible (pas du NVMe, nvme-cli absent, ou controleur qui refuse
+  # la commande). Si LUKS est present, cette valeur est ignoree : la
+  # destruction de cle reste la methode utilisee, instantanee et niveau
+  # NIST 800-88 Purge. Sur NVMe avec nvme-cli, l'effacement cryptographique
+  # natif du controleur est tente avant ce repli : quelques secondes, pas
+  # des heures. 1 passe suffit au niveau "Clear" de NIST 800-88 ; inutile
+  # de monter cette valeur sauf exigence externe specifique (ex: DoD
+  # 5220.22-M), au prix d'un temps d'execution bien plus long.
+  fallback_wipe_passes: 1
 
 # "targets" et "passes" ne servent qu'au mode --mode targeted (effacement
 # cible fichier par fichier, sans reimagage/redemarrage) : les chemins sont

@@ -48,6 +48,11 @@ if ! python3 -c "import tkinter" >/dev/null 2>&1; then
   apt-get install -y python3-tk
 fi
 
+if ! command -v nvme >/dev/null 2>&1; then
+  echo "==> nvme-cli n'est pas installe (necessaire pour l'effacement rapide des cibles NVMe)."
+  apt-get install -y nvme-cli
+fi
+
 echo "==> Autorisation sans mot de passe pour le lancement de l'interface (uniquement cette commande)"
 cat > /etc/sudoers.d/clientwipe-live-wipe-gui <<EOF
 $TARGET_USER ALL=(root) NOPASSWD: $CLIENTWIPE_BIN live-wipe-gui

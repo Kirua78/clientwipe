@@ -1,6 +1,91 @@
 from clientwipe import disk_wipe
 
 
+class FakeCompleted:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def test_wipe_device_uses_nvme_crypto_erase_when_available(monkeypatch):
+    monkeypatch.setattr(disk_wipe.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    calls = []
+    monkeypatch.setattr(
+        disk_wipe.subprocess, "run",
+        lambda cmd, capture_output=True, text=True, check=False: calls.append(cmd) or FakeCompleted(returncode=0),
+    )
+
+    result = disk_wipe.wipe_device("/dev/nvme0n1", passes=3, dry_run=False)
+
+    assert result.method == "nvme-format-crypto-erase"
+    assert result.attempted is True
+    assert result.completed is True
+    assert calls == [["nvme", "format", "/dev/nvme0n1", "--ses=2", "--force"]]
+
+
+def test_wipe_device_falls_back_to_shred_when_nvme_format_fails(monkeypatch):
+    monkeypatch.setattr(disk_wipe.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    calls = []
+
+    def fake_run(cmd, capture_output=True, text=True, check=False):
+        calls.append(cmd)
+        if cmd[0] == "nvme":
+            return FakeCompleted(returncode=1, stderr="Crypto erase not supported")
+        return FakeCompleted(returncode=0)
+
+    monkeypatch.setattr(disk_wipe.subprocess, "run", fake_run)
+
+    result = disk_wipe.wipe_device("/dev/nvme0n1", passes=3, dry_run=False)
+
+    assert result.method == "shred"
+    assert result.completed is True
+    assert calls[0] == ["nvme", "format", "/dev/nvme0n1", "--ses=2", "--force"]
+    assert calls[1] == ["shred", "--iterations=3", "--zero", "/dev/nvme0n1"]
+
+
+def test_wipe_device_skips_nvme_path_when_nvme_cli_missing(monkeypatch):
+    monkeypatch.setattr(disk_wipe.shutil, "which", lambda name: None if name == "nvme" else f"/usr/bin/{name}")
+
+    calls = []
+    monkeypatch.setattr(
+        disk_wipe.subprocess, "run",
+        lambda cmd, capture_output=True, text=True, check=False: calls.append(cmd) or FakeCompleted(returncode=0),
+    )
+
+    result = disk_wipe.wipe_device("/dev/nvme0n1", passes=3, dry_run=False)
+
+    assert result.method == "shred"
+    assert calls == [["shred", "--iterations=3", "--zero", "/dev/nvme0n1"]]
+
+
+def test_wipe_device_skips_nvme_path_for_non_nvme_device(monkeypatch):
+    monkeypatch.setattr(disk_wipe.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    calls = []
+    monkeypatch.setattr(
+        disk_wipe.subprocess, "run",
+        lambda cmd, capture_output=True, text=True, check=False: calls.append(cmd) or FakeCompleted(returncode=0),
+    )
+
+    result = disk_wipe.wipe_device("/dev/sdb", passes=3, dry_run=False)
+
+    assert result.method == "shred"
+    assert calls == [["shred", "--iterations=3", "--zero", "/dev/sdb"]]
+
+
+def test_wipe_device_nvme_dry_run_does_not_execute(monkeypatch):
+    monkeypatch.setattr(disk_wipe.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    result = disk_wipe.wipe_device("/dev/nvme0n1", passes=3, dry_run=True)
+
+    assert result.attempted is False
+    assert result.completed is False
+    assert result.method == "nvme-format-crypto-erase"
+
+
 def test_wipe_device_dry_run_does_not_execute(monkeypatch):
     monkeypatch.setattr(disk_wipe.shutil, "which", lambda name: "/usr/bin/shred")
 

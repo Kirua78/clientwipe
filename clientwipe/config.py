@@ -26,7 +26,7 @@ class FullResetConfig:
     device: str
     boot_entry: str
     header_backup_dir: Optional[str] = None
-    fallback_wipe_passes: int = 3
+    fallback_wipe_passes: int = 1
 
 
 @dataclass(frozen=True)
@@ -51,7 +51,7 @@ class Config:
                 device=full_reset_raw["device"],
                 boot_entry=full_reset_raw["boot_entry"],
                 header_backup_dir=full_reset_raw.get("header_backup_dir"),
-                fallback_wipe_passes=int(full_reset_raw.get("fallback_wipe_passes", 3)),
+                fallback_wipe_passes=int(full_reset_raw.get("fallback_wipe_passes", 1)),
             )
 
         if not targets and full_reset is None:

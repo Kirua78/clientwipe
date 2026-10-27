@@ -51,7 +51,7 @@ def full_wipe(
     device: str,
     boot_entry: str,
     header_backup_path: Optional[Path] = None,
-    fallback_wipe_passes: int = 3,
+    fallback_wipe_passes: int = 1,
     dry_run: bool = True,
 ) -> FullWipeReport:
     """Reset every compartment of the machine: detect whether `device` is

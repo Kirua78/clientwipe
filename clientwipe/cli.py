@@ -381,8 +381,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_live_wipe.add_argument("--images-repository", required=True, help="Chemin vers l'image golden (typiquement sur la cle USB montee)")
     p_live_wipe.add_argument("--header-backup-dir", default=None, help="Dossier (sur la cle USB) ou sauvegarder l'en-tete LUKS avant destruction")
     p_live_wipe.add_argument(
-        "--fallback-wipe-passes", type=int, default=3,
-        help="Nombre de passes du multi-passes de secours, utilise seulement si aucun LUKS n'est detecte",
+        "--fallback-wipe-passes", type=int, default=1,
+        help="Nombre de passes de l'ecrasement logiciel de secours (NIST 800-88 Clear : 1 passe suffit) ; "
+        "utilise seulement si aucun LUKS n'est detecte et que l'effacement natif NVMe n'est pas possible",
     )
     p_live_wipe.add_argument(
         "--inventory-output-dir", default=None,
@@ -403,8 +404,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Dossier temporaire pour monter la partition contenant l'image golden si elle n'est pas deja montee",
     )
     p_live_wipe_gui.add_argument(
-        "--fallback-wipe-passes", type=int, default=3,
-        help="Nombre de passes du multi-passes de secours, utilise seulement si aucun LUKS n'est detecte",
+        "--fallback-wipe-passes", type=int, default=1,
+        help="Nombre de passes de l'ecrasement logiciel de secours (NIST 800-88 Clear : 1 passe suffit) ; "
+        "utilise seulement si aucun LUKS n'est detecte et que l'effacement natif NVMe n'est pas possible",
     )
     p_live_wipe_gui.add_argument("--out-dir", default=None)
     p_live_wipe_gui.set_defaults(func=cmd_live_wipe_gui)

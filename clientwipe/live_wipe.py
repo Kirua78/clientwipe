@@ -55,7 +55,7 @@ def live_wipe(
     image_name: str,
     images_repository: Path,
     header_backup_path: Optional[Path] = None,
-    fallback_wipe_passes: int = 3,
+    fallback_wipe_passes: int = 1,
     inventory_output_dir: Optional[Path] = None,
     inventory_mount_point: Path = Path("/mnt/clientwipe-inventory"),
     dry_run: bool = True,

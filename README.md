@@ -122,18 +122,28 @@ flowchart LR
   fausse garantie de niveau "Purge". Un poste Windows chiffre BitLocker est
   donc traite au niveau "Clear" (reimagage complet), pas "Purge". Voir
   `clientwipe/bitlocker.py`.
-- **Multi-passes de secours sur le disque entier (uniquement si pas de LUKS)** :
+- **Effacement de secours sur le disque entier (uniquement si pas de LUKS)** :
   quand aucun LUKS n'est detecte (disque non chiffre, ou BitLocker que cet
   outil ne sait que detecter), le mode remise a zero complete et le mode cle
-  autonome ecrasent en plus l'integralite du peripherique avec des donnees
-  aleatoires (`shred`, ou repli pur Python si absent), configurable via
-  `fallback_wipe_passes` (defaut 3). Le but : renforcer le niveau "Clear"
-  dans ce cas degrade, en detruisant aussi les metadonnees de chiffrement
-  eventuelles, pas seulement les donnees visibles. Si LUKS est present, cette
-  etape est ignoree : la destruction de cle reste la seule methode utilisee,
-  instantanee, pas besoin d'ecraser des heures de donnees pour un resultat
-  cryptographiquement deja irreversible. Trace dans le certificat genere
-  (`clientwipe/disk_wipe.py`).
+  autonome effacent en plus l'integralite du peripherique. Sur une
+  partition NVMe avec `nvme-cli` installe, ceci passe par un effacement
+  cryptographique natif du controleur (`nvme format --ses=2`) : quelques
+  secondes, pas des heures, et une vraie garantie de niveau "Purge" au sens
+  NIST 800-88 (la commande agit sous le niveau logique vu par l'OS, donc
+  couvre aussi les blocs reaffectes par le wear-leveling qu'un ecrasement
+  logiciel ne peut pas toujours atteindre). Si ce n'est pas possible (pas du
+  NVMe, `nvme-cli` absent, ou le controleur refuse la commande), repli sur un
+  ecrasement logiciel multi-passes avec des donnees aleatoires (`shred`, ou
+  repli pur Python si absent), configurable via `fallback_wipe_passes`
+  (defaut 1 passe, suffisant pour le niveau "Clear" selon NIST 800-88 ; les
+  recommandations historiques a plusieurs passes type DoD 5220.22-M sont
+  considerees obsoletes par ce standard). Le but du repli logiciel : renforcer
+  le niveau "Clear" dans ce cas degrade, en detruisant aussi les metadonnees
+  de chiffrement eventuelles, pas seulement les donnees visibles. Si LUKS est
+  present, toute cette etape est ignoree : la destruction de cle reste la
+  seule methode utilisee, instantanee, pas besoin d'ecraser des heures de
+  donnees pour un resultat cryptographiquement deja irreversible. Trace dans
+  le certificat genere (`clientwipe/disk_wipe.py`).
 - **Sanitisation ciblee (mode alternatif, `--mode targeted`)** : effacement
   multi-passes (`shred` si disponible, sinon repli pur Python) des
   emplacements definis dans un fichier de configuration YAML (projets Burp,
@@ -299,7 +309,7 @@ full_reset:
   device: /dev/sda3
   boot_entry: "Clonezilla Recovery"
   header_backup_dir: /mnt/clientwipe-usb/luks-headers  # optionnel, voir Fonctionnalites
-  fallback_wipe_passes: 3  # utilise uniquement si pas de LUKS detecte, voir Fonctionnalites
+  fallback_wipe_passes: 1  # repli logiciel uniquement si pas de LUKS ni d'effacement NVMe possible, voir Fonctionnalites
 
 # Mode targeted (--mode targeted, ou clientwipe run)
 passes: 3

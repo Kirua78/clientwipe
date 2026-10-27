@@ -13,7 +13,7 @@ from .live_wipe import LiveWipeReport, live_wipe
 DEFAULT_IMAGE_NAME = "KaliState0"
 DEFAULT_MOUNT_POINT = Path("/mnt/clientwipe-gui-images")
 DEFAULT_OUT_DIR = Path("/mnt/clientwipe-gui-images/certificates")
-DEFAULT_FALLBACK_WIPE_PASSES = 3
+DEFAULT_FALLBACK_WIPE_PASSES = 1
 
 COLOR_BG = "#000000"
 COLOR_CARD = "#060a07"

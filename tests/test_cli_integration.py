@@ -271,5 +271,5 @@ def test_cli_live_wipe_gui_uses_defaults_when_omitted(monkeypatch):
 
     assert exit_code == 0
     assert calls == [(
-        gui_live_wipe.DEFAULT_IMAGE_NAME, gui_live_wipe.DEFAULT_MOUNT_POINT, gui_live_wipe.DEFAULT_OUT_DIR, 3,
+        gui_live_wipe.DEFAULT_IMAGE_NAME, gui_live_wipe.DEFAULT_MOUNT_POINT, gui_live_wipe.DEFAULT_OUT_DIR, 1,
     )]
