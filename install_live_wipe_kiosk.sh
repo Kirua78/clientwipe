@@ -28,6 +28,17 @@ fi
 
 CLIENTWIPE_BIN="$(command -v clientwipe || true)"
 if [[ -z "$CLIENTWIPE_BIN" ]]; then
+  # sudo peut avoir un PATH restreint (secure_path) qui exclut /usr/local/bin,
+  # la ou pip installe clientwipe pour root. On verifie ces emplacements avant
+  # d'abandonner.
+  for candidate in /usr/local/bin/clientwipe /usr/bin/clientwipe; do
+    if [[ -x "$candidate" ]]; then
+      CLIENTWIPE_BIN="$candidate"
+      break
+    fi
+  done
+fi
+if [[ -z "$CLIENTWIPE_BIN" ]]; then
   echo "clientwipe introuvable dans le PATH : installez-le d'abord (voir README.md)." >&2
   exit 1
 fi
