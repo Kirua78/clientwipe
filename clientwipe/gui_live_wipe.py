@@ -15,6 +15,21 @@ DEFAULT_MOUNT_POINT = Path("/mnt/clientwipe-gui-images")
 DEFAULT_OUT_DIR = Path("/mnt/clientwipe-gui-images/certificates")
 DEFAULT_FALLBACK_WIPE_PASSES = 3
 
+COLOR_BG = "#000000"
+COLOR_CARD = "#060a07"
+COLOR_BORDER = "#00ff9f"
+COLOR_TEXT = "#d9ffe6"
+COLOR_SUBTEXT = "#4f9a6c"
+COLOR_ACCENT = "#00ff9f"
+COLOR_ACCENT_DARK = "#00cc7f"
+COLOR_ACCENT_TEXT = "#001a10"
+COLOR_DANGER = "#ff2b4e"
+COLOR_DANGER_DARK = "#cc0033"
+COLOR_SUCCESS = "#00ff9f"
+COLOR_NEUTRAL = "#0e1510"
+COLOR_NEUTRAL_DARK = "#050a06"
+FONT_MONO = "Monospace"
+
 
 @dataclass
 class CandidateDevice:
@@ -71,7 +86,7 @@ def find_images_repository(
     mount_point: Path,
     exclude_device: Optional[str] = None,
 ) -> Optional[Path]:
-    """Locate the partition holding the golden image, by scanning every
+    """Locate the partition holding the golden master, by scanning every
     partition on the system (except `exclude_device`, the wipe target) for
     a top-level folder matching `image_name`.
 
@@ -151,9 +166,11 @@ class LiveWipeGuiApp:
         self.root = tk.Tk()
         self.root.title("ClientWipe")
         self.root.attributes("-fullscreen", True)
-        self.root.configure(bg="#1a1a1a")
+        self.root.configure(bg=COLOR_BG)
 
-        self.container = tk.Frame(self.root, bg="#1a1a1a")
+        self._configure_style()
+
+        self.container = tk.Frame(self.root, bg=COLOR_BG)
         self.container.pack(expand=True, fill="both")
 
         self._show_device_selection()
@@ -161,68 +178,192 @@ class LiveWipeGuiApp:
     def run(self) -> None:
         self.root.mainloop()
 
+    def _configure_style(self) -> None:
+        from tkinter import ttk
+
+        style = ttk.Style(self.root)
+        style.theme_use("clam")
+
+        style.configure(
+            "Primary.TButton", background=COLOR_ACCENT, foreground=COLOR_ACCENT_TEXT,
+            font=(FONT_MONO, 14, "bold"), borderwidth=0, padding=(28, 14),
+        )
+        style.map("Primary.TButton", background=[("active", COLOR_ACCENT_DARK)])
+
+        style.configure(
+            "Danger.TButton", background=COLOR_DANGER, foreground="black",
+            font=(FONT_MONO, 14, "bold"), borderwidth=0, padding=(28, 14),
+        )
+        style.map("Danger.TButton", background=[("active", COLOR_DANGER_DARK)])
+
+        style.configure(
+            "Secondary.TButton", background=COLOR_NEUTRAL, foreground=COLOR_ACCENT,
+            font=(FONT_MONO, 14, "bold"), borderwidth=1, bordercolor=COLOR_ACCENT, padding=(28, 14),
+        )
+        style.map("Secondary.TButton", background=[("active", COLOR_NEUTRAL_DARK)])
+
+        style.configure(
+            "Accent.Horizontal.TProgressbar", troughcolor=COLOR_CARD,
+            background=COLOR_ACCENT, bordercolor=COLOR_CARD,
+            lightcolor=COLOR_ACCENT, darkcolor=COLOR_ACCENT,
+        )
+
+        style.configure(
+            "Devices.Treeview", background=COLOR_CARD, fieldbackground=COLOR_CARD,
+            foreground=COLOR_TEXT, rowheight=36, font=(FONT_MONO, 12), borderwidth=0,
+        )
+        style.configure(
+            "Devices.Treeview.Heading", background=COLOR_NEUTRAL_DARK, foreground=COLOR_ACCENT,
+            font=(FONT_MONO, 11, "bold"), borderwidth=0,
+        )
+        style.map(
+            "Devices.Treeview",
+            background=[("selected", COLOR_ACCENT)],
+            foreground=[("selected", COLOR_ACCENT_TEXT)],
+        )
+
     def _clear(self) -> None:
         for widget in self.container.winfo_children():
             widget.destroy()
 
-    def _label(self, text: str, size: int = 16, bold: bool = False) -> "tk.Label":
+    def _header(self, title: str, subtitle: str = "") -> None:
         import tkinter as tk
 
-        font = ("Sans", size, "bold" if bold else "normal")
-        return tk.Label(self.container, text=text, font=font, fg="white", bg="#1a1a1a", wraplength=900, justify="left")
+        wrapper = tk.Frame(self.container, bg=COLOR_BG)
+        wrapper.pack(fill="x", pady=(36, 30))
+
+        tk.Frame(wrapper, bg=COLOR_ACCENT, height=2).pack(fill="x", padx=120)
+
+        tk.Label(
+            wrapper, text="root@clientwipe:~#", font=(FONT_MONO, 12),
+            fg=COLOR_SUBTEXT, bg=COLOR_BG,
+        ).pack(pady=(16, 0))
+        tk.Label(
+            wrapper, text=f"{title.upper()} █", font=(FONT_MONO, 26, "bold"),
+            fg=COLOR_ACCENT, bg=COLOR_BG,
+        ).pack(pady=(4, 0))
+        if subtitle:
+            tk.Label(
+                wrapper, text=f"> {subtitle}", font=(FONT_MONO, 12),
+                fg=COLOR_SUBTEXT, bg=COLOR_BG, wraplength=760, justify="center",
+            ).pack(pady=(10, 0))
+
+        tk.Frame(wrapper, bg=COLOR_ACCENT, height=2).pack(fill="x", padx=120, pady=(20, 0))
+
+    def _card(self) -> "tk.Frame":
+        import tkinter as tk
+
+        border = tk.Frame(self.container, bg=COLOR_BORDER)
+        border.pack(padx=40)
+        inner = tk.Frame(border, bg=COLOR_CARD)
+        inner.pack(padx=2, pady=2)
+        return inner
 
     def _show_device_selection(self) -> None:
         import tkinter as tk
+        from tkinter import ttk
 
         self._clear()
-        self._label("ClientWipe - Selection du disque a nettoyer", size=22, bold=True).pack(pady=20)
+        self._header(
+            "Selection du disque",
+            "Choisissez le disque a nettoyer. Le disque de demarrage de cette cle "
+            "est automatiquement exclu de la liste.",
+        )
 
         excluded = boot_device()
         devices = list_candidate_devices(exclude=excluded)
 
+        card = self._card()
+
         if not devices:
-            self._label("Aucun disque cible detecte (hors cle de demarrage).").pack(pady=10)
+            tk.Label(
+                card, text="Aucun disque cible detecte (hors cle de demarrage).",
+                font=(FONT_MONO, 14), fg=COLOR_SUBTEXT, bg=COLOR_CARD,
+            ).pack(padx=60, pady=60)
             return
 
-        listbox = tk.Listbox(self.container, font=("Monospace", 14), width=70, height=10)
+        columns = ("device", "size", "model")
+        tree = ttk.Treeview(
+            card, columns=columns, show="headings", style="Devices.Treeview",
+            height=8, selectmode="browse",
+        )
+        tree.heading("device", text="PERIPHERIQUE")
+        tree.heading("size", text="TAILLE")
+        tree.heading("model", text="MODELE")
+        tree.column("device", width=180, anchor="w")
+        tree.column("size", width=110, anchor="center")
+        tree.column("model", width=320, anchor="w")
+
         for device in devices:
-            listbox.insert("end", f"{device.path}   {device.size}   {device.model}")
-        listbox.pack(pady=10)
-        listbox.selection_set(0)
+            tree.insert("", "end", iid=device.path, values=(device.path, device.size, device.model))
+
+        tree.pack(padx=30, pady=30)
+
+        children = tree.get_children()
+        if children:
+            tree.selection_set(children[0])
+            tree.focus(children[0])
 
         def on_next() -> None:
-            index = listbox.curselection()
-            if not index:
+            selection = tree.selection()
+            if not selection:
                 return
-            self.selected_device = devices[index[0]].path
+            self.selected_device = selection[0]
             self._show_confirmation()
 
-        tk.Button(self.container, text="Suivant", font=("Sans", 14), command=on_next).pack(pady=20)
+        actions = tk.Frame(self.container, bg=COLOR_BG)
+        actions.pack(pady=30)
+        ttk.Button(actions, text="[ SUIVANT ]", style="Primary.TButton", command=on_next).pack()
 
     def _show_confirmation(self) -> None:
         import tkinter as tk
-
-        self._clear()
-        self._label("ATTENTION", size=22, bold=True).pack(pady=20)
-        self._label(
-            f"Ceci va effacer DEFINITIVEMENT {self.selected_device} et le "
-            f"reimager avec le golden master '{self.image_name}'.\n\nCette action est irreversible."
-        ).pack(pady=10)
-
-        buttons = tk.Frame(self.container, bg="#1a1a1a")
-        buttons.pack(pady=30)
-        tk.Button(buttons, text="Annuler", font=("Sans", 14), command=self._show_device_selection).pack(side="left", padx=20)
-        tk.Button(buttons, text="Confirmer et effacer", font=("Sans", 14), command=self._start_wipe).pack(side="left", padx=20)
-
-    def _start_wipe(self) -> None:
         from tkinter import ttk
 
         self._clear()
-        self._label("Operation en cours, ne pas eteindre la machine...", size=18, bold=True).pack(pady=40)
-        self._label("Detection du chiffrement, effacement, reimagage...").pack(pady=10)
+        self._header("Confirmation", "Verifiez bien le disque cible avant de continuer.")
 
-        self.progress = ttk.Progressbar(self.container, mode="indeterminate", length=400)
-        self.progress.pack(pady=20)
+        card = self._card()
+        tk.Label(card, text="[ ! ]", font=(FONT_MONO, 36, "bold"), fg=COLOR_DANGER, bg=COLOR_CARD).pack(pady=(40, 10))
+        tk.Label(
+            card,
+            text=(
+                f"Ceci va effacer DEFINITIVEMENT {self.selected_device}\n"
+                f"et le reimager avec le golden master '{self.image_name}'."
+            ),
+            font=(FONT_MONO, 16, "bold"), fg=COLOR_TEXT, bg=COLOR_CARD, justify="center", wraplength=620,
+        ).pack(padx=50, pady=10)
+        tk.Label(
+            card, text="Cette action est irreversible.",
+            font=(FONT_MONO, 13, "bold"), fg=COLOR_DANGER, bg=COLOR_CARD,
+        ).pack(pady=(0, 40))
+
+        buttons = tk.Frame(self.container, bg=COLOR_BG)
+        buttons.pack(pady=30)
+        ttk.Button(
+            buttons, text="[ ANNULER ]", style="Secondary.TButton", command=self._show_device_selection,
+        ).pack(side="left", padx=10)
+        ttk.Button(
+            buttons, text="[ CONFIRMER ET EFFACER ]", style="Danger.TButton", command=self._start_wipe,
+        ).pack(side="left", padx=10)
+
+    def _start_wipe(self) -> None:
+        import tkinter as tk
+        from tkinter import ttk
+
+        self._clear()
+        self._header("Operation en cours", "Ne pas eteindre la machine ni debrancher le disque.")
+
+        card = self._card()
+        tk.Label(card, text="[ EN COURS ]", font=(FONT_MONO, 28, "bold"), fg=COLOR_ACCENT, bg=COLOR_CARD).pack(pady=(40, 10))
+        tk.Label(
+            card, text="Detection du chiffrement, effacement, reimagage...",
+            font=(FONT_MONO, 14), fg=COLOR_SUBTEXT, bg=COLOR_CARD,
+        ).pack(padx=50, pady=(0, 20))
+
+        self.progress = ttk.Progressbar(
+            card, mode="indeterminate", length=420, style="Accent.Horizontal.TProgressbar",
+        )
+        self.progress.pack(pady=(0, 40))
         self.progress.start(15)
 
         thread = threading.Thread(target=self._run_wipe, daemon=True)
@@ -259,22 +400,42 @@ class LiveWipeGuiApp:
             self._show_result(outcome[1], outcome[2])
 
     def _show_error(self, message: str) -> None:
+        import tkinter as tk
+
         self._clear()
-        self._label("ECHEC", size=22, bold=True).pack(pady=20)
-        self._label(message).pack(pady=10)
+        self._header("Echec")
+
+        card = self._card()
+        tk.Label(card, text="[ FAIL ]", font=(FONT_MONO, 32, "bold"), fg=COLOR_DANGER, bg=COLOR_CARD).pack(pady=(40, 10))
+        tk.Label(
+            card, text=message, font=(FONT_MONO, 14), fg=COLOR_TEXT, bg=COLOR_CARD,
+            wraplength=620, justify="center",
+        ).pack(padx=50, pady=(0, 40))
+
         self._exit_button()
 
     def _show_result(self, report: LiveWipeReport, certificate: dict) -> None:
+        import tkinter as tk
+
         self._clear()
-        status = "REMISE A ZERO REUSSIE" if report.passed else "ECHEC"
-        self._label(status, size=22, bold=True).pack(pady=20)
-        self._label(f"Certificat : {certificate['json_path']}").pack(pady=10)
+        success = report.passed
+        self._header("Remise a zero reussie" if success else "Echec")
+
+        card = self._card()
+        icon = "[ OK ]" if success else "[ FAIL ]"
+        color = COLOR_SUCCESS if success else COLOR_DANGER
+        tk.Label(card, text=icon, font=(FONT_MONO, 32, "bold"), fg=color, bg=COLOR_CARD).pack(pady=(40, 10))
+        tk.Label(
+            card, text=f"Certificat : {certificate['json_path']}",
+            font=(FONT_MONO, 13), fg=COLOR_SUBTEXT, bg=COLOR_CARD, wraplength=620, justify="center",
+        ).pack(padx=50, pady=(0, 40))
+
         self._exit_button()
 
     def _exit_button(self) -> None:
-        import tkinter as tk
+        from tkinter import ttk
 
-        tk.Button(self.container, text="Quitter", font=("Sans", 14), command=self.root.destroy).pack(pady=30)
+        ttk.Button(self.container, text="[ QUITTER ]", style="Secondary.TButton", command=self.root.destroy).pack(pady=30)
 
 
 def run_gui(
