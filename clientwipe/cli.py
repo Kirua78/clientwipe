@@ -287,6 +287,22 @@ def cmd_live_wipe(args: argparse.Namespace) -> int:
     return 0 if report.passed else 1
 
 
+def cmd_live_wipe_gui(args: argparse.Namespace) -> int:
+    """Entry point for the point-and-click version of live-wipe (see
+    README > "Interface graphique"): meant to autostart full-screen on
+    Cle A so the operator never has to type a command, just pick the
+    target disk and click to confirm."""
+    from .gui_live_wipe import DEFAULT_IMAGE_NAME, DEFAULT_MOUNT_POINT, DEFAULT_OUT_DIR, run_gui
+
+    run_gui(
+        image_name=args.image or DEFAULT_IMAGE_NAME,
+        mount_point=Path(args.mount_point) if args.mount_point else DEFAULT_MOUNT_POINT,
+        out_dir=Path(args.out_dir) if args.out_dir else DEFAULT_OUT_DIR,
+        fallback_wipe_passes=args.fallback_wipe_passes,
+    )
+    return 0
+
+
 def cmd_reset(args: argparse.Namespace) -> int:
     result = restore_golden_image(
         args.image, args.device, Path(args.images_repository), dry_run=not args.confirm_reset
@@ -376,6 +392,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_live_wipe.add_argument("--gpg-key", default=None)
     p_live_wipe.add_argument("--operator", default=None)
     p_live_wipe.set_defaults(func=cmd_live_wipe)
+
+    p_live_wipe_gui = subparsers.add_parser(
+        "live-wipe-gui",
+        help="Version cliquable de live-wipe : selection du disque et confirmation a la souris, sans ligne de commande",
+    )
+    p_live_wipe_gui.add_argument("--image", default=None, help="Nom de l'image golden a restaurer (defaut: KaliState0)")
+    p_live_wipe_gui.add_argument(
+        "--mount-point", default=None,
+        help="Dossier temporaire pour monter la partition contenant l'image golden si elle n'est pas deja montee",
+    )
+    p_live_wipe_gui.add_argument(
+        "--fallback-wipe-passes", type=int, default=3,
+        help="Nombre de passes du multi-passes de secours, utilise seulement si aucun LUKS n'est detecte",
+    )
+    p_live_wipe_gui.add_argument("--out-dir", default=None)
+    p_live_wipe_gui.set_defaults(func=cmd_live_wipe_gui)
 
     p_reset = subparsers.add_parser("reset", help="Restaure une image golden via Clonezilla (mode avance, optionnel)")
     p_reset.add_argument("--image", required=True)

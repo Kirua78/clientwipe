@@ -64,9 +64,26 @@ flowchart LR
   declenche automatiquement, mais reimage **immediatement** (pas besoin de
   programmer un redemarrage vers un environnement separe : l'environnement
   live demarre sur la cle *est* deja cet environnement de recuperation).
-  Confirmation par simple saisie clavier (`OUI` en majuscules), pas de
-  fenetre graphique necessaire puisqu'un operateur est forcement present au
-  clavier pour avoir choisi de demarrer sur cette cle.
+  Confirmation par simple saisie clavier (`OUI` en majuscules) en ligne de
+  commande, ou via l'interface graphique cliquable decrite ci-dessous.
+- **Interface graphique cliquable (`clientwipe live-wipe-gui`)** : version
+  pointer-cliquer de `live-wipe`, pour qu'un operateur n'ait jamais besoin de
+  taper une commande (voir `clientwipe/gui_live_wipe.py`). Trois ecrans
+  plein ecran (Tkinter, deja fourni avec Python, aucune dependance
+  supplementaire hormis le paquet systeme `python3-tk`) : selection du
+  disque cible dans une liste (le disque de demarrage de la cle elle-meme
+  est automatiquement exclu de la liste, impossible de se cibler soi-meme
+  par erreur), confirmation explicite par bouton, puis progression et
+  resultat avec le chemin du certificat genere. L'image doree n'a pas besoin
+  d'etre indiquee a la main : l'outil scanne les partitions disponibles pour
+  trouver celle qui contient l'image attendue (`KaliState0` par defaut).
+  Le script `install_live_wipe_kiosk.sh` (a executer une seule fois, sur
+  Cle A elle-meme) configure une **connexion automatique** (LightDM) et un
+  **lancement automatique** de cette interface a l'ouverture de session,
+  sans mot de passe sudo a saisir (autorisation `sudoers` limitee a
+  exactement cette commande). Demarrer le poste cible sur Cle A au
+  BIOS/UEFI reste le seul geste d'autorisation requis, comme pour la
+  version ligne de commande.
 - **Remise a zero complete (mode par defaut du declenchement USB)** : au
   branchement de la cle, l'outil detecte automatiquement si le disque est
   chiffre en LUKS. Si oui, il detruit les cles de chiffrement : un
@@ -368,14 +385,19 @@ sauvegarde, pour les recuperer a ce stade.
   n'est configuree ou si `gpg` n'est pas installe.
 - Le declenchement udev/systemd est specifique a Linux ; voir la section
   "Test en conditions reelles" pour le valider sur une VM jetable.
-- `clientwipe live-wipe` est valide en conditions reelles sur une session
-  Kali Live officielle (detection/sauvegarde/destruction LUKS reelles sur
-  un vrai peripherique bloc, echec propre sans Clonezilla installe). Reste
-  a construire : la cle definitive auto-suffisante (Kali **installe**
-  dessus, pas juste Live, avec Clonezilla + image golden + demarrage
-  automatique embarques), en pause suite a une instabilite materielle du
-  passthrough USB rencontree pendant la construction, a reprendre en
-  presentiel.
+- `clientwipe live-wipe` est valide de bout en bout en conditions reelles :
+  Cle A (Kali **installe**, pas juste Live, avec ClientWipe + Clonezilla +
+  image doree embarques) demarre de facon autonome sur du vrai materiel
+  physique (teste en UEFI pur, sans support Legacy/CSM), efface un vrai
+  disque NVMe cible et le reimage avec succes. Une coupure de courant en
+  plein milieu d'un essai a confirme que le disque cible interrompu reste
+  dans un etat recuperable (table de partitions simplement absente, pas de
+  corruption bloquante) : relancer l'operation suffit, sans manipulation de
+  reparation prealable.
+- L'interface graphique (`clientwipe live-wipe-gui`) est neuve : couverte
+  par des tests unitaires sur sa logique (detection du disque de
+  demarrage a exclure, recherche de l'image doree), mais pas encore testee
+  en conditions reelles sur Cle A au moment de l'ecriture de ces lignes.
 - La detection BitLocker (`clientwipe/bitlocker.py`) est testee
   unitairement (`cryptsetup bitlkDump` simule) mais pas encore validee sur
   un vrai volume BitLocker reel, faute de poste Windows chiffre disponible

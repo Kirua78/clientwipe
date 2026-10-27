@@ -231,3 +231,45 @@ def test_live_wipe_happy_path(tmp_path, monkeypatch, capsys):
     assert exit_code == 0
     assert "Cle LUKS detruite: OK" in out
     assert "Reimagage: OK" in out
+
+
+def test_cli_live_wipe_gui_invokes_run_gui_with_parsed_args(monkeypatch, tmp_path):
+    from clientwipe import gui_live_wipe
+
+    calls = []
+    monkeypatch.setattr(
+        gui_live_wipe, "run_gui",
+        lambda image_name, mount_point, out_dir, fallback_wipe_passes: calls.append(
+            (image_name, mount_point, out_dir, fallback_wipe_passes)
+        ),
+    )
+
+    exit_code = main([
+        "live-wipe-gui",
+        "--image", "golden-kali",
+        "--mount-point", str(tmp_path / "mnt"),
+        "--out-dir", str(tmp_path / "certs"),
+        "--fallback-wipe-passes", "5",
+    ])
+
+    assert exit_code == 0
+    assert calls == [("golden-kali", Path(tmp_path / "mnt"), Path(tmp_path / "certs"), 5)]
+
+
+def test_cli_live_wipe_gui_uses_defaults_when_omitted(monkeypatch):
+    from clientwipe import gui_live_wipe
+
+    calls = []
+    monkeypatch.setattr(
+        gui_live_wipe, "run_gui",
+        lambda image_name, mount_point, out_dir, fallback_wipe_passes: calls.append(
+            (image_name, mount_point, out_dir, fallback_wipe_passes)
+        ),
+    )
+
+    exit_code = main(["live-wipe-gui"])
+
+    assert exit_code == 0
+    assert calls == [(
+        gui_live_wipe.DEFAULT_IMAGE_NAME, gui_live_wipe.DEFAULT_MOUNT_POINT, gui_live_wipe.DEFAULT_OUT_DIR, 3,
+    )]
