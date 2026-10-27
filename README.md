@@ -74,9 +74,9 @@ flowchart LR
   disque cible dans une liste (le disque de demarrage de la cle elle-meme
   est automatiquement exclu de la liste, impossible de se cibler soi-meme
   par erreur), confirmation explicite par bouton, puis progression et
-  resultat avec le chemin du certificat genere. L'image doree n'a pas besoin
-  d'etre indiquee a la main : l'outil scanne les partitions disponibles pour
-  trouver celle qui contient l'image attendue (`KaliState0` par defaut).
+  resultat avec le chemin du certificat genere. Le golden master n'a pas besoin
+  d'etre indique a la main : l'outil scanne les partitions disponibles pour
+  trouver celle qui le contient (`KaliState0` par defaut).
   Le script `install_live_wipe_kiosk.sh` (a executer une seule fois, sur
   Cle A elle-meme) configure une **connexion automatique** (LightDM) et un
   **lancement automatique** de cette interface a l'ouverture de session,
@@ -387,7 +387,7 @@ sauvegarde, pour les recuperer a ce stade.
   "Test en conditions reelles" pour le valider sur une VM jetable.
 - `clientwipe live-wipe` est valide de bout en bout en conditions reelles :
   Cle A (Kali **installe**, pas juste Live, avec ClientWipe + Clonezilla +
-  image doree embarques) demarre de facon autonome sur du vrai materiel
+  golden master embarque) demarre de facon autonome sur du vrai materiel
   physique (teste en UEFI pur, sans support Legacy/CSM), efface un vrai
   disque NVMe cible et le reimage avec succes. Une coupure de courant en
   plein milieu d'un essai a confirme que le disque cible interrompu reste
@@ -396,7 +396,7 @@ sauvegarde, pour les recuperer a ce stade.
   reparation prealable.
 - L'interface graphique (`clientwipe live-wipe-gui`) est neuve : couverte
   par des tests unitaires sur sa logique (detection du disque de
-  demarrage a exclure, recherche de l'image doree), mais pas encore testee
+  demarrage a exclure, recherche du golden master), mais pas encore testee
   en conditions reelles sur Cle A au moment de l'ecriture de ces lignes.
 - La detection BitLocker (`clientwipe/bitlocker.py`) est testee
   unitairement (`cryptsetup bitlkDump` simule) mais pas encore validee sur

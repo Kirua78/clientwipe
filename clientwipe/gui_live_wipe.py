@@ -206,7 +206,7 @@ class LiveWipeGuiApp:
         self._label("ATTENTION", size=22, bold=True).pack(pady=20)
         self._label(
             f"Ceci va effacer DEFINITIVEMENT {self.selected_device} et le "
-            f"reimager avec l'image '{self.image_name}'.\n\nCette action est irreversible."
+            f"reimager avec le golden master '{self.image_name}'.\n\nCette action est irreversible."
         ).pack(pady=10)
 
         buttons = tk.Frame(self.container, bg="#1a1a1a")
@@ -215,9 +215,15 @@ class LiveWipeGuiApp:
         tk.Button(buttons, text="Confirmer et effacer", font=("Sans", 14), command=self._start_wipe).pack(side="left", padx=20)
 
     def _start_wipe(self) -> None:
+        from tkinter import ttk
+
         self._clear()
         self._label("Operation en cours, ne pas eteindre la machine...", size=18, bold=True).pack(pady=40)
         self._label("Detection du chiffrement, effacement, reimagage...").pack(pady=10)
+
+        self.progress = ttk.Progressbar(self.container, mode="indeterminate", length=400)
+        self.progress.pack(pady=20)
+        self.progress.start(15)
 
         thread = threading.Thread(target=self._run_wipe, daemon=True)
         thread.start()
@@ -226,7 +232,7 @@ class LiveWipeGuiApp:
     def _run_wipe(self) -> None:
         images_repository = find_images_repository(self.image_name, self.mount_point, exclude_device=self.selected_device)
         if images_repository is None:
-            self.result_queue.put(("error", "Image dorée introuvable sur les disques disponibles."))
+            self.result_queue.put(("error", "Golden master introuvable sur les disques disponibles."))
             return
 
         report = live_wipe(
@@ -246,6 +252,7 @@ class LiveWipeGuiApp:
             self.root.after(500, self._poll_result)
             return
 
+        self.progress.stop()
         if outcome[0] == "error":
             self._show_error(outcome[1])
         else:
