@@ -12,6 +12,7 @@ ProgressCallback = Callable[[Optional[float]], None]
 
 _PARTIMAG = Path("/home/partimag")
 _PERCENT_RE = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%")
+_LAST_OUTPUT_LOG = Path("/var/log/clientwipe/last-reimaging-output.log")
 
 
 @dataclass
@@ -62,7 +63,8 @@ def _open_pty():
 
 def _drain_progress(master_fd: int, progress_callback: ProgressCallback) -> None:
     """Read from `master_fd` until it closes, extracting the latest
-    percentage seen so far and reporting it whenever it changes.
+    percentage seen so far and reporting it whenever it changes, and
+    saving everything read to _LAST_OUTPUT_LOG along the way.
 
     Reads through a pty rather than a plain pipe: most CLI tools (partclone
     included) fully buffer stdout when it is not a terminal, which would
@@ -70,33 +72,46 @@ def _drain_progress(master_fd: int, progress_callback: ProgressCallback) -> None
     parsing pointless. A pty makes the child think it is talking to an
     interactive terminal, so the carriage-return-driven progress line
     Clonezilla/partclone print actually streams instead of being withheld.
+
+    The log file exists because the percentage is all this function keeps:
+    everything else read from ocs-sr is discarded once scanned. Found on
+    real hardware to matter: a restore that got far enough to show a
+    percentage still failed (ocs-sr returncode 1) with nothing beyond that
+    generic code to say why, and by then the only copy of its actual
+    output no longer existed anywhere to check.
     """
     buffer = ""
     last_fraction: Optional[float] = None
-    while True:
-        try:
-            chunk = os.read(master_fd, 1024)
-        except OSError:
-            break
-        if not chunk:
-            break
-        buffer += chunk.decode("utf-8", errors="replace")
-        buffer = buffer[-4096:]
-
-        # Report every match seen so far, not just the last one: a single
-        # read() can return several progress updates at once, and only
-        # taking the last would silently skip the ones in between. Already
-        # reported fractions are naturally skipped by the last_fraction
-        # check even though they stay in `buffer` (a sliding window, not
-        # consumed).
-        for match in _PERCENT_RE.finditer(buffer):
+    _LAST_OUTPUT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with open(_LAST_OUTPUT_LOG, "w", encoding="utf-8", errors="replace") as log_file:
+        while True:
             try:
-                fraction = min(float(match.group(1)) / 100.0, 0.99)
-            except ValueError:
-                continue
-            if fraction != last_fraction:
-                last_fraction = fraction
-                progress_callback(fraction)
+                chunk = os.read(master_fd, 1024)
+            except OSError:
+                break
+            if not chunk:
+                break
+            text = chunk.decode("utf-8", errors="replace")
+            log_file.write(text)
+            log_file.flush()
+
+            buffer += text
+            buffer = buffer[-4096:]
+
+            # Report every match seen so far, not just the last one: a
+            # single read() can return several progress updates at once,
+            # and only taking the last would silently skip the ones in
+            # between. Already reported fractions are naturally skipped by
+            # the last_fraction check even though they stay in `buffer`
+            # (a sliding window, not consumed).
+            for match in _PERCENT_RE.finditer(buffer):
+                try:
+                    fraction = min(float(match.group(1)) / 100.0, 0.99)
+                except ValueError:
+                    continue
+                if fraction != last_fraction:
+                    last_fraction = fraction
+                    progress_callback(fraction)
 
 
 def _run_ocs_sr_with_progress(
@@ -197,6 +212,7 @@ def restore_golden_image(
     try:
         env = {**os.environ, "ocs_batch_mode": "1"}
 
+        output_log_hint = ""
         if progress_callback is None:
             completed = subprocess.run(
                 command, cwd=str(images_repository), stdin=subprocess.DEVNULL,
@@ -207,12 +223,13 @@ def restore_golden_image(
             progress_callback(None)
             returncode = _run_ocs_sr_with_progress(command, images_repository, env, progress_callback)
             progress_callback(1.0 if returncode == 0 else None)
+            output_log_hint = f" (sortie complete : {_LAST_OUTPUT_LOG})"
 
         return ImagingResult(
             command=command,
             executed=True,
             returncode=returncode,
-            error=None if returncode == 0 else f"ocs-sr a renvoye le code {returncode}",
+            error=None if returncode == 0 else f"ocs-sr a renvoye le code {returncode}{output_log_hint}",
         )
     finally:
         _unmount_partimag()

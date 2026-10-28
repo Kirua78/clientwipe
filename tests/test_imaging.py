@@ -156,6 +156,7 @@ def test_restore_golden_image_reports_error_on_nonzero_returncode(tmp_path, monk
 def test_restore_golden_image_reports_progress_from_output(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
     monkeypatch.setattr(imaging, "_PARTIMAG", tmp_path / "partimag")
+    monkeypatch.setattr(imaging, "_LAST_OUTPUT_LOG", tmp_path / "output.log")
     monkeypatch.setattr(imaging.subprocess, "run", _fake_mount_run)
 
     read_fd, write_fd = os.pipe()
@@ -173,11 +174,13 @@ def test_restore_golden_image_reports_progress_from_output(tmp_path, monkeypatch
     assert result.executed is True
     assert result.returncode == 0
     assert fractions == [None, 0.12, 0.57, 0.99, 1.0]
+    assert "Completed: 100%" in (tmp_path / "output.log").read_text(encoding="utf-8")
 
 
 def test_restore_golden_image_progress_reports_none_on_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
     monkeypatch.setattr(imaging, "_PARTIMAG", tmp_path / "partimag")
+    monkeypatch.setattr(imaging, "_LAST_OUTPUT_LOG", tmp_path / "output.log")
     monkeypatch.setattr(imaging.subprocess, "run", _fake_mount_run)
 
     read_fd, write_fd = os.pipe()
@@ -192,6 +195,7 @@ def test_restore_golden_image_progress_reports_none_on_failure(tmp_path, monkeyp
     assert result.executed is True
     assert result.returncode == 1
     assert fractions == [None, None]
+    assert "output.log" in result.error
 
 
 def test_schedule_reimage_dry_run_does_not_execute(monkeypatch):
