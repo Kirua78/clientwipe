@@ -301,6 +301,17 @@ class LiveWipeGuiApp:
 
         tk.Frame(wrapper, bg=COLOR_ACCENT, height=2).pack(fill="x", padx=120, pady=(20, 0))
 
+    def _bind_activate(self, widget, command) -> None:
+        """Return/Space do not reliably invoke a focused ttk.Button in
+        this environment: found in testing, Tab moving focus onto a
+        button worked (after the explicit handling added for it) but
+        pressing Return then did nothing at all, native ttk activation
+        silently not firing. Every actionable button gets this bound
+        explicitly instead of relying on ttk's default key bindings.
+        """
+        widget.bind("<Return>", lambda event: command())
+        widget.bind("<space>", lambda event: command())
+
     def _card(self) -> "tk.Frame":
         import tkinter as tk
 
@@ -370,10 +381,14 @@ class LiveWipeGuiApp:
 
         actions = tk.Frame(self.container, bg=COLOR_BG)
         actions.pack(pady=30)
-        ttk.Button(
+        quit_button = ttk.Button(
             actions, text="[ QUITTER ]", style="Secondary.TButton", command=self.root.destroy,
-        ).pack(side="left", padx=10)
-        ttk.Button(actions, text="[ SUIVANT ]", style="Primary.TButton", command=on_next).pack(side="left", padx=10)
+        )
+        quit_button.pack(side="left", padx=10)
+        self._bind_activate(quit_button, self.root.destroy)
+        next_button = ttk.Button(actions, text="[ SUIVANT ]", style="Primary.TButton", command=on_next)
+        next_button.pack(side="left", padx=10)
+        self._bind_activate(next_button, on_next)
 
         # Fleches haut/bas deja gerees nativement par le Treeview en mode
         # "browse" ; Entree valide la selection sans avoir a tabuler
@@ -410,10 +425,12 @@ class LiveWipeGuiApp:
             buttons, text="[ ANNULER ]", style="Secondary.TButton", command=self._show_device_selection,
         )
         cancel_button.pack(side="left", padx=10)
+        self._bind_activate(cancel_button, self._show_device_selection)
         confirm_button = ttk.Button(
             buttons, text="[ CONFIRMER ET EFFACER ]", style="Danger.TButton", command=self._start_wipe,
         )
         confirm_button.pack(side="left", padx=10)
+        self._bind_activate(confirm_button, self._start_wipe)
 
         # Focus par defaut sur Annuler, jamais sur l'action destructive :
         # Entree/Echap sans navigation explicite au clavier n'efface rien.
