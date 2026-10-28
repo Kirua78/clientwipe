@@ -84,16 +84,19 @@ flowchart LR
   commande, ou via l'interface graphique cliquable decrite ci-dessous.
 - **Interface graphique cliquable (`clientwipe live-wipe-gui`)** : version
   pointer-cliquer de `live-wipe`, pour qu'un operateur n'ait jamais besoin de
-  taper une commande (voir `clientwipe/gui_live_wipe.py`). Trois ecrans
+  taper une commande (voir `clientwipe/gui_live_wipe.py`). Quatre ecrans
   plein ecran (Tkinter, deja fourni avec Python, aucune dependance
   supplementaire hormis le paquet systeme `python3-tk`) : selection du
   disque cible dans une liste (le disque de demarrage de la cle elle-meme
   est automatiquement exclu de la liste, impossible de se cibler soi-meme
-  par erreur), confirmation explicite par bouton, puis resultat avec le
-  chemin du certificat genere et un bouton pour eteindre la machine quand
-  l'operateur a fini de le lire (`ocs-sr` n'eteint plus tout seul des la
-  fin du reimagage : ca coupait la machine avant meme que cet ecran, ou
-  l'ecriture du certificat juste avant, n'ait eu le temps de s'afficher).
+  par erreur), confirmation explicite par bouton, phrase de passe LUKS de
+  la golden master si elle en a une (laisser vide sinon ; sans rapport avec
+  le chiffrement eventuel du disque cible, detecte et efface tout seul),
+  puis resultat avec le chemin du certificat genere et un bouton pour
+  eteindre la machine quand l'operateur a fini de le lire (`ocs-sr`
+  n'eteint plus tout seul des la fin du reimagage : ca coupait la machine
+  avant meme que cet ecran, ou l'ecriture du certificat juste avant, n'ait
+  eu le temps de s'afficher).
   Le golden master n'a pas besoin d'etre
   indique a la main : l'outil scanne les partitions disponibles pour
   trouver celle qui le contient (`KaliState0-efi` par defaut).

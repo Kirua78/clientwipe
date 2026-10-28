@@ -216,7 +216,7 @@ def test_live_wipe_happy_path(tmp_path, monkeypatch, capsys):
     )
     monkeypatch.setattr(
         cli, "live_wipe",
-        lambda device, image, images_repository, header_backup_path=None, fallback_wipe_passes=3, inventory_output_dir=None, dry_run=False: fake_report,
+        lambda device, image, images_repository, header_backup_path=None, fallback_wipe_passes=3, inventory_output_dir=None, dry_run=False, golden_master_luks_passphrase=None: fake_report,
     )
 
     exit_code = main([

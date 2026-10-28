@@ -116,6 +116,7 @@ def _drain_progress(master_fd: int, progress_callback: ProgressCallback) -> None
 
 def _run_ocs_sr_with_progress(
     command: List[str], images_repository: Path, env: dict, progress_callback: ProgressCallback,
+    luks_passphrase: Optional[str] = None,
 ) -> int:
     """Same process setup as the plain subprocess.run() path (stdin
     silenced, batch mode, detached session, see restore_golden_image's
@@ -128,10 +129,14 @@ def _run_ocs_sr_with_progress(
     """
     master_fd, slave_fd = _open_pty()
     process = subprocess.Popen(
-        command, cwd=str(images_repository), stdin=subprocess.DEVNULL,
+        command, cwd=str(images_repository),
+        stdin=subprocess.PIPE if luks_passphrase is not None else subprocess.DEVNULL,
         stdout=slave_fd, stderr=slave_fd, env=env, start_new_session=True,
     )
     os.close(slave_fd)
+    if luks_passphrase is not None and process.stdin is not None:
+        process.stdin.write((luks_passphrase + "\n").encode("utf-8"))
+        process.stdin.close()
     try:
         _drain_progress(master_fd, progress_callback)
     finally:
@@ -145,6 +150,7 @@ def restore_golden_image(
     images_repository: Path,
     dry_run: bool = True,
     progress_callback: Optional[ProgressCallback] = None,
+    luks_passphrase: Optional[str] = None,
 ) -> ImagingResult:
     """Wrap Clonezilla's `ocs-sr` to restore a golden image onto `device`.
 
@@ -197,6 +203,17 @@ def restore_golden_image(
     actual corruption; -scr trades the automatic check for restorability
     this project otherwise relies on manual real-hardware testing to
     confirm instead.
+
+    `luks_passphrase`, when the golden master itself has a LUKS-encrypted
+    partition (unrelated to any encryption on `device`, the target being
+    wiped: this is about the image being restored onto it), is fed to
+    ocs-sr's own `cryptsetup open` call via stdin. Found necessary on real
+    hardware: without it, that call gets immediate EOF, fails, and ocs-sr
+    then loops asking "Voulez-vous reessayer ?" forever (nothing was ever
+    hung here either, in the same way /home/partimag never was: it was
+    waiting on an input nothing could ever supply). Left as None, this
+    keeps using stdin=DEVNULL as before, correct for a golden master with
+    no LUKS partition at all.
     """
     command = [
         "ocs-sr",
@@ -227,14 +244,22 @@ def restore_golden_image(
 
         output_log_hint = ""
         if progress_callback is None:
-            completed = subprocess.run(
-                command, cwd=str(images_repository), stdin=subprocess.DEVNULL,
-                env=env, start_new_session=True, check=False,
-            )
+            if luks_passphrase is not None:
+                completed = subprocess.run(
+                    command, cwd=str(images_repository), input=luks_passphrase + "\n",
+                    text=True, env=env, start_new_session=True, check=False,
+                )
+            else:
+                completed = subprocess.run(
+                    command, cwd=str(images_repository), stdin=subprocess.DEVNULL,
+                    env=env, start_new_session=True, check=False,
+                )
             returncode = completed.returncode
         else:
             progress_callback(None)
-            returncode = _run_ocs_sr_with_progress(command, images_repository, env, progress_callback)
+            returncode = _run_ocs_sr_with_progress(
+                command, images_repository, env, progress_callback, luks_passphrase=luks_passphrase,
+            )
             progress_callback(1.0 if returncode == 0 else None)
             output_log_hint = f" (sortie complete : {_LAST_OUTPUT_LOG})"
 

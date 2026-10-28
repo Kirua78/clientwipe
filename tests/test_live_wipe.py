@@ -21,7 +21,7 @@ def test_live_wipe_reimages_directly_without_luks(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(
+        lambda image_name, device, images_repository, dry_run, progress_callback=None, luks_passphrase=None: ImagingResult(
             command=["ocs-sr", "restoredisk", image_name, device], executed=True, returncode=0,
         ),
     )
@@ -51,7 +51,7 @@ def test_live_wipe_reports_bitlocker_on_windows_target(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(
+        lambda image_name, device, images_repository, dry_run, progress_callback=None, luks_passphrase=None: ImagingResult(
             command=["ocs-sr", "restoredisk", image_name, device], executed=True, returncode=0,
         ),
     )
@@ -79,7 +79,7 @@ def test_live_wipe_fails_when_fallback_device_wipe_fails(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+        lambda image_name, device, images_repository, dry_run, progress_callback=None, luks_passphrase=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
     )
 
     report = live_wipe_module.live_wipe("/dev/sda", "golden-kali", tmp_path, dry_run=False)
@@ -102,7 +102,7 @@ def test_live_wipe_runs_inventory_when_output_dir_given_and_imaging_succeeds(mon
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+        lambda image_name, device, images_repository, dry_run, progress_callback=None, luks_passphrase=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
     )
     inventory_calls = []
     monkeypatch.setattr(
@@ -136,7 +136,7 @@ def test_live_wipe_skips_inventory_when_imaging_fails(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=1),
+        lambda image_name, device, images_repository, dry_run, progress_callback=None, luks_passphrase=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=1),
     )
     inventory_calls = []
     monkeypatch.setattr(
@@ -168,7 +168,7 @@ def test_live_wipe_erases_luks_before_reimaging(monkeypatch, tmp_path):
     imaging_calls = []
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run, progress_callback=None: imaging_calls.append(device) or
+        lambda image_name, device, images_repository, dry_run, progress_callback=None, luks_passphrase=None: imaging_calls.append(device) or
         ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
     )
 
@@ -198,7 +198,7 @@ def test_live_wipe_skips_erase_when_header_backup_fails(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+        lambda image_name, device, images_repository, dry_run, progress_callback=None, luks_passphrase=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
     )
 
     report = live_wipe_module.live_wipe(
@@ -227,7 +227,7 @@ def test_live_wipe_reports_progress_through_each_phase(monkeypatch, tmp_path):
 
     monkeypatch.setattr(live_wipe_module, "wipe_device", fake_wipe_device)
 
-    def fake_restore(image_name, device, images_repository, dry_run, progress_callback=None):
+    def fake_restore(image_name, device, images_repository, dry_run, progress_callback=None, luks_passphrase=None):
         if progress_callback:
             progress_callback(0.75)
         return ImagingResult(command=["ocs-sr"], executed=True, returncode=0)
@@ -267,7 +267,7 @@ def test_live_wipe_fails_when_imaging_fails(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=1),
+        lambda image_name, device, images_repository, dry_run, progress_callback=None, luks_passphrase=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=1),
     )
 
     report = live_wipe_module.live_wipe("/dev/sda", "golden-kali", tmp_path, dry_run=False)

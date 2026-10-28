@@ -260,6 +260,7 @@ def cmd_live_wipe(args: argparse.Namespace) -> int:
         fallback_wipe_passes=args.fallback_wipe_passes,
         inventory_output_dir=inventory_output_dir,
         dry_run=False,
+        golden_master_luks_passphrase=args.golden_master_luks_passphrase,
     )
     certificate = generate_live_wipe_certificate(report, Path(args.out_dir), args.gpg_key, args.operator)
 
@@ -388,6 +389,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_live_wipe.add_argument(
         "--inventory-output-dir", default=None,
         help="Dossier ou ecrire tool-inventory.json (paquets installes sur l'image restauree) ; omis = pas d'inventaire",
+    )
+    p_live_wipe.add_argument(
+        "--golden-master-luks-passphrase", default=None,
+        help="Phrase de passe si l'image golden a elle-meme une partition LUKS (visible dans "
+        "la liste des processus : preferer --live-wipe-gui, qui la demande au clavier, quand possible)",
     )
     p_live_wipe.add_argument("--out-dir", default="certificates")
     p_live_wipe.add_argument("--gpg-key", default=None)

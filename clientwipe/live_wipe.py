@@ -65,6 +65,7 @@ def live_wipe(
     inventory_mount_point: Path = Path("/mnt/clientwipe-inventory"),
     dry_run: bool = True,
     progress_callback: Optional[LiveWipeProgressCallback] = None,
+    golden_master_luks_passphrase: Optional[str] = None,
 ) -> LiveWipeReport:
     """Erase and reimage `device` immediately, from within a live boot
     environment running ON the trusted USB key itself (see the
@@ -96,6 +97,11 @@ def live_wipe(
     cannot be estimated at that instant, and a short status string. Meant
     for `clientwipe live-wipe-gui` to drive a per-step progress display;
     the CLI leaves it unset, so this runs exactly as before.
+
+    `golden_master_luks_passphrase` is unrelated to `device`'s own LUKS
+    detection/erase above: it unlocks a LUKS partition inside the golden
+    master image itself, if it has one, during the restore step. See
+    restore_golden_image's docstring for why this is needed at all.
     """
 
     def _notify(step: str, fraction: Optional[float], detail: str = "") -> None:
@@ -134,6 +140,7 @@ def live_wipe(
     imaging_result = restore_golden_image(
         image_name, device, images_repository, dry_run=dry_run,
         progress_callback=(lambda f: _notify("reimagage", f, "Reimagage en cours...")) if progress_callback else None,
+        luks_passphrase=golden_master_luks_passphrase,
     )
     _notify("reimagage", 1.0 if imaging_result.returncode == 0 else None, "Reimagage termine")
 

@@ -50,13 +50,14 @@ def _make_fake_run(ocs_sr_returncode, calls=None):
     three, always succeeding except for the ocs-sr call itself, whose
     returncode is configurable.
     """
-    def fake_run(command, cwd=None, stdin=None, env=None, start_new_session=False, check=False, capture_output=False, text=False):
+    def fake_run(command, cwd=None, stdin=None, input=None, env=None, start_new_session=False, check=False, capture_output=False, text=False):
         if command[0] in ("mount", "umount"):
             return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
         if calls is not None:
             calls["command"] = command
             calls["cwd"] = cwd
             calls["stdin"] = stdin
+            calls["input"] = input
             calls["env"] = env
             calls["start_new_session"] = start_new_session
         return type("R", (), {"returncode": ocs_sr_returncode})()
@@ -88,6 +89,27 @@ def test_restore_golden_image_executes_when_confirmed(tmp_path, monkeypatch):
     assert calls["stdin"] == imaging.subprocess.DEVNULL
     assert calls["env"]["ocs_batch_mode"] == "1"
     assert calls["start_new_session"] is True
+
+
+def test_restore_golden_image_feeds_luks_passphrase_via_stdin(tmp_path, monkeypatch):
+    # Regression test: ocs-sr's own `cryptsetup open` call for a LUKS
+    # partition inside the golden master (unrelated to any LUKS on the
+    # target device) was found to block forever asking "Voulez-vous
+    # reessayer ?" when stdin is DEVNULL, since cryptsetup never got a
+    # passphrase to try in the first place.
+    monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
+    monkeypatch.setattr(imaging, "_PARTIMAG", tmp_path / "partimag")
+
+    calls = {}
+    monkeypatch.setattr(imaging.subprocess, "run", _make_fake_run(0, calls))
+
+    result = imaging.restore_golden_image(
+        "golden-kali", "/dev/sda", tmp_path, dry_run=False, luks_passphrase="correct horse battery staple",
+    )
+
+    assert result.executed is True
+    assert calls["stdin"] is None
+    assert calls["input"] == "correct horse battery staple\n"
 
 
 def test_restore_golden_image_binds_images_repository_onto_partimag(tmp_path, monkeypatch):
@@ -175,6 +197,45 @@ def test_restore_golden_image_reports_progress_from_output(tmp_path, monkeypatch
     assert result.returncode == 0
     assert fractions == [None, 0.12, 0.57, 0.99, 1.0]
     assert "Completed: 100%" in (tmp_path / "output.log").read_text(encoding="utf-8")
+
+
+def test_restore_golden_image_with_progress_feeds_luks_passphrase_via_stdin(tmp_path, monkeypatch):
+    # Same regression as test_restore_golden_image_feeds_luks_passphrase_via_stdin,
+    # but through the pty/Popen path used whenever a progress_callback is given.
+    monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
+    monkeypatch.setattr(imaging, "_PARTIMAG", tmp_path / "partimag")
+    monkeypatch.setattr(imaging, "_LAST_OUTPUT_LOG", tmp_path / "output.log")
+    monkeypatch.setattr(imaging.subprocess, "run", _fake_mount_run)
+
+    read_fd, write_fd = os.pipe()
+    monkeypatch.setattr(imaging, "_open_pty", lambda: (read_fd, write_fd))
+
+    stdin_writes = []
+
+    class FakeStdin:
+        def write(self, data):
+            stdin_writes.append(data)
+
+        def close(self):
+            pass
+
+    class FakePopen:
+        def __init__(self, command, cwd=None, stdin=None, stdout=None, stderr=None, env=None, start_new_session=False):
+            self.stdin = FakeStdin() if stdin == imaging.subprocess.PIPE else None
+            os.write(stdout, b"done\r")
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(imaging.subprocess, "Popen", FakePopen)
+
+    result = imaging.restore_golden_image(
+        "golden-kali", "/dev/sda", tmp_path, dry_run=False, progress_callback=lambda f: None,
+        luks_passphrase="hunter2",
+    )
+
+    assert result.returncode == 0
+    assert stdin_writes == [b"hunter2\n"]
 
 
 def test_restore_golden_image_progress_reports_none_on_failure(tmp_path, monkeypatch):

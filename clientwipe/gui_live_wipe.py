@@ -205,6 +205,7 @@ class LiveWipeGuiApp:
         self.out_dir = out_dir
         self.fallback_wipe_passes = fallback_wipe_passes
         self.selected_device: Optional[str] = None
+        self.golden_master_luks_passphrase: Optional[str] = None
         self.result_queue: "queue.Queue[tuple]" = queue.Queue()
 
         _disable_screen_blanking()
@@ -442,10 +443,10 @@ class LiveWipeGuiApp:
         cancel_button.pack(side="left", padx=10)
         self._bind_activate(cancel_button, self._show_device_selection)
         confirm_button = ttk.Button(
-            buttons, text="[ CONFIRMER ET EFFACER ]", style="Danger.TButton", command=self._start_wipe,
+            buttons, text="[ CONFIRMER ET EFFACER ]", style="Danger.TButton", command=self._show_luks_passphrase_entry,
         )
         confirm_button.pack(side="left", padx=10)
-        self._bind_activate(confirm_button, self._start_wipe)
+        self._bind_activate(confirm_button, self._show_luks_passphrase_entry)
 
         # Focus par defaut sur Annuler, jamais sur l'action destructive :
         # Entree/Echap sans navigation explicite au clavier n'efface rien.
@@ -467,6 +468,52 @@ class LiveWipeGuiApp:
         cancel_button.bind("<Shift-Tab>", focus_confirm)
         confirm_button.bind("<Tab>", focus_cancel)
         confirm_button.bind("<Shift-Tab>", focus_cancel)
+
+    def _show_luks_passphrase_entry(self) -> None:
+        # Unrelated to any LUKS on the disk being wiped (detected and
+        # erased automatically, no passphrase needed there): this is for
+        # the golden master image itself, if it has its own LUKS
+        # partition. Found necessary on real hardware: ocs-sr's own
+        # cryptsetup call blocks forever asking for one otherwise (see
+        # imaging.py). Left empty, this behaves exactly as before (no
+        # passphrase passed through at all).
+        import tkinter as tk
+        from tkinter import ttk
+
+        self._clear()
+        self._header(
+            "Phrase de passe golden master",
+            "Si l'image de reference a sa propre partition LUKS, saisissez sa phrase "
+            "de passe. Sinon, laissez vide et continuez.",
+        )
+
+        card = self._card()
+        entry_var = tk.StringVar(value=self.golden_master_luks_passphrase or "")
+        entry = tk.Entry(
+            card, textvariable=entry_var, show="*", font=(FONT_MONO, 16),
+            bg=COLOR_CARD, fg=COLOR_TEXT, insertbackground=COLOR_TEXT, relief="flat",
+            highlightthickness=2, highlightbackground=COLOR_NEUTRAL, highlightcolor=COLOR_ACCENT,
+            width=30, justify="center",
+        )
+        entry.pack(padx=50, pady=50)
+
+        def on_continue(event=None) -> None:
+            value = entry_var.get()
+            self.golden_master_luks_passphrase = value if value else None
+            self._start_wipe()
+
+        buttons = tk.Frame(self.container, bg=COLOR_BG)
+        buttons.pack(pady=30)
+        back_button = ttk.Button(buttons, text="[ RETOUR ]", style="Secondary.TButton", command=self._show_confirmation)
+        back_button.pack(side="left", padx=10)
+        self._bind_activate(back_button, self._show_confirmation)
+        continue_button = ttk.Button(buttons, text="[ CONTINUER ]", style="Primary.TButton", command=on_continue)
+        continue_button.pack(side="left", padx=10)
+        self._bind_activate(continue_button, on_continue)
+
+        entry.bind("<Return>", on_continue)
+        entry.focus_set()
+        self.root.bind("<Escape>", lambda event: self._show_confirmation())
 
     def _start_wipe(self) -> None:
         import tkinter as tk
@@ -538,6 +585,7 @@ class LiveWipeGuiApp:
                 fallback_wipe_passes=self.fallback_wipe_passes,
                 dry_run=False,
                 progress_callback=on_progress,
+                golden_master_luks_passphrase=self.golden_master_luks_passphrase,
             )
             certificate = generate_live_wipe_certificate(report, self.out_dir)
             self.result_queue.put(("done", report, certificate))
