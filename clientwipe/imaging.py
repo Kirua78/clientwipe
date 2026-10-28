@@ -193,7 +193,7 @@ def restore_golden_image(
         "-e2",
         "-r",
         "-j2",
-        "-p", "poweroff",
+        "-p", "true",
         "restoredisk", image_name, device,
     ]
     if shutil.which("ocs-sr") is None:

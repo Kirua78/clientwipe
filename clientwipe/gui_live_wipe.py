@@ -165,6 +165,19 @@ def find_images_repository(
     return None
 
 
+def _disable_screen_blanking() -> None:
+    """Stop the screen from locking or blanking out while an operator is
+    meant to watch this run to completion: the X11 screensaver timeout and
+    the monitor's own power-saving blank-out (DPMS) are two separate
+    things that both need turning off, or either one alone can still hide
+    the screen mid-operation. Best effort: a missing `xset` or no X11
+    session at all (xset exits non-zero) just leaves the default behavior
+    in place rather than crashing the whole GUI over this.
+    """
+    subprocess.run(["xset", "s", "off"], capture_output=True, text=True, check=False)
+    subprocess.run(["xset", "-dpms"], capture_output=True, text=True, check=False)
+
+
 class LiveWipeGuiApp:
     """Point-and-click wizard around live_wipe(), for an operator who should
     never have to type a command: select the target disk, confirm, watch
@@ -193,6 +206,8 @@ class LiveWipeGuiApp:
         self.fallback_wipe_passes = fallback_wipe_passes
         self.selected_device: Optional[str] = None
         self.result_queue: "queue.Queue[tuple]" = queue.Queue()
+
+        _disable_screen_blanking()
 
         self.root = tk.Tk()
         self.root.title("ClientWipe")
@@ -582,7 +597,7 @@ class LiveWipeGuiApp:
             wraplength=620, justify="center",
         ).pack(padx=50, pady=(0, 40))
 
-        self._exit_button()
+        self._final_buttons()
 
     def _show_result(self, report: LiveWipeReport, certificate: dict) -> None:
         import tkinter as tk
@@ -600,7 +615,10 @@ class LiveWipeGuiApp:
             font=(FONT_MONO, 13), fg=COLOR_SUBTEXT, bg=COLOR_CARD, wraplength=620, justify="center",
         ).pack(padx=50, pady=(0, 40))
 
-        self._exit_button()
+        self._final_buttons()
+
+    def _poweroff(self) -> None:
+        subprocess.run(["systemctl", "poweroff"], check=False)
 
     def _exit_button(self) -> None:
         from tkinter import ttk
@@ -611,6 +629,29 @@ class LiveWipeGuiApp:
         self.exit_button.pack(pady=30)
         self.exit_button.focus_set()
         self.root.bind("<Return>", lambda event: self.root.destroy())
+        self.root.bind("<Escape>", lambda event: self.root.destroy())
+
+    def _final_buttons(self) -> None:
+        # Used once the operation is truly over (success or failure), in
+        # place of the automatic poweroff ocs-sr used to trigger on its
+        # own: that cut the machine off before this result screen (or the
+        # certificate write right before it) ever had a chance to render,
+        # so an operator watching never actually saw the outcome. The
+        # operator now decides when to power off, after reading it.
+        import tkinter as tk
+        from tkinter import ttk
+
+        buttons = tk.Frame(self.container, bg=COLOR_BG)
+        buttons.pack(pady=30)
+        quit_button = ttk.Button(buttons, text="[ QUITTER ]", style="Secondary.TButton", command=self.root.destroy)
+        quit_button.pack(side="left", padx=10)
+        self._bind_activate(quit_button, self.root.destroy)
+        poweroff_button = ttk.Button(buttons, text="[ ETEINDRE ]", style="Danger.TButton", command=self._poweroff)
+        poweroff_button.pack(side="left", padx=10)
+        self._bind_activate(poweroff_button, self._poweroff)
+
+        poweroff_button.focus_set()
+        self.root.bind("<Return>", lambda event: self._poweroff())
         self.root.bind("<Escape>", lambda event: self.root.destroy())
 
 

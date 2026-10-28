@@ -90,7 +90,11 @@ flowchart LR
   disque cible dans une liste (le disque de demarrage de la cle elle-meme
   est automatiquement exclu de la liste, impossible de se cibler soi-meme
   par erreur), confirmation explicite par bouton, puis resultat avec le
-  chemin du certificat genere. Le golden master n'a pas besoin d'etre
+  chemin du certificat genere et un bouton pour eteindre la machine quand
+  l'operateur a fini de le lire (`ocs-sr` n'eteint plus tout seul des la
+  fin du reimagage : ca coupait la machine avant meme que cet ecran, ou
+  l'ecriture du certificat juste avant, n'ait eu le temps de s'afficher).
+  Le golden master n'a pas besoin d'etre
   indique a la main : l'outil scanne les partitions disponibles pour
   trouver celle qui le contient (`KaliState0-efi` par defaut).
   L'ecran de progression affiche les trois etapes separement (detection
