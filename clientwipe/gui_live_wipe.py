@@ -301,6 +301,7 @@ class LiveWipeGuiApp:
                 card, text="Aucun disque cible detecte (hors cle de demarrage).",
                 font=(FONT_MONO, 14), fg=COLOR_SUBTEXT, bg=COLOR_CARD,
             ).pack(padx=60, pady=60)
+            self._exit_button()
             return
 
         columns = ("device", "size", "model")
@@ -334,7 +335,10 @@ class LiveWipeGuiApp:
 
         actions = tk.Frame(self.container, bg=COLOR_BG)
         actions.pack(pady=30)
-        ttk.Button(actions, text="[ SUIVANT ]", style="Primary.TButton", command=on_next).pack()
+        ttk.Button(
+            actions, text="[ QUITTER ]", style="Secondary.TButton", command=self.root.destroy,
+        ).pack(side="left", padx=10)
+        ttk.Button(actions, text="[ SUIVANT ]", style="Primary.TButton", command=on_next).pack(side="left", padx=10)
 
     def _show_confirmation(self) -> None:
         import tkinter as tk
