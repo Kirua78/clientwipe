@@ -44,11 +44,15 @@ def restore_golden_image(
     It does not get a real percentage: an earlier version captured ocs-sr's
     output live through a pty to parse one out of Clonezilla/partclone's
     own progress text, but that hung real restores indefinitely on actual
-    hardware (very likely some part of the Clonezilla process tree keeps
-    its copy of the pty open past the point this function can detect, so
-    the read loop waiting for it to close never returns) with no reliable
-    fix available without live access to that environment to iterate on.
-    Reverted in favor of this always-correct, if less informative, version.
+    hardware. Reverted, but the hang turned out not to be the pty after
+    all: it reproduced identically with the plain subprocess.run() below,
+    stdin inherited as usual. ocs-sr (a bash script) apparently blocks on
+    a read() somewhere under this launch chain (sudo, from a GUI autostart
+    context) that a plain interactive terminal run never hits, with zero
+    CPU use and no child process while stuck, exactly what a blocked read
+    on stdin looks like. `stdin=subprocess.DEVNULL` below guarantees that
+    read() returns immediately (EOF) instead of blocking forever,
+    regardless of what ocs-sr is actually waiting for.
     """
     command = [
         "ocs-sr",
@@ -69,7 +73,7 @@ def restore_golden_image(
     if progress_callback is not None:
         progress_callback(None)
 
-    completed = subprocess.run(command, cwd=str(images_repository), check=False)
+    completed = subprocess.run(command, cwd=str(images_repository), stdin=subprocess.DEVNULL, check=False)
 
     if progress_callback is not None:
         progress_callback(1.0 if completed.returncode == 0 else None)
