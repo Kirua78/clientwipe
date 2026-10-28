@@ -185,6 +185,18 @@ def restore_golden_image(
     does, got blamed for the hang that was really /home/partimag, and was
     reverted; reading ocs-sr's output through a pty was never actually the
     problem, so it is back.
+
+    `-scr` skips ocs-sr's own pre-restore "is this image restorable"
+    check. Found necessary for a golden master with an EFI system
+    partition: that small FAT32 partition gets saved via partimage
+    (Clonezilla's older tool) rather than partclone, and this check only
+    knows how to verify partclone-saved partitions, so it refuses to
+    proceed at all rather than just skip what it cannot verify. The two
+    other partitions (root, /boot) were independently confirmed
+    restorable by this same check, so this is a tool limitation, not
+    actual corruption; -scr trades the automatic check for restorability
+    this project otherwise relies on manual real-hardware testing to
+    confirm instead.
     """
     command = [
         "ocs-sr",
@@ -194,6 +206,7 @@ def restore_golden_image(
         "-r",
         "-j2",
         "-p", "true",
+        "-scr",
         "restoredisk", image_name, device,
     ]
     if shutil.which("ocs-sr") is None:
