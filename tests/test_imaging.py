@@ -1,20 +1,4 @@
-import os
-
 from clientwipe import imaging
-
-
-def _make_fake_popen(output: bytes, returncode: int):
-    class FakePopen:
-        def __init__(self, command, cwd=None, stdout=None, stderr=None, close_fds=None):
-            self.command = command
-            self.cwd = cwd
-            if output:
-                os.write(stdout, output)
-
-        def wait(self):
-            return returncode
-
-    return FakePopen
 
 
 def test_restore_golden_image_dry_run_does_not_execute(tmp_path, monkeypatch):
@@ -75,15 +59,9 @@ def test_restore_golden_image_reports_error_on_nonzero_returncode(tmp_path, monk
     assert "1" in result.error
 
 
-def test_restore_golden_image_reports_progress_from_output(tmp_path, monkeypatch):
+def test_restore_golden_image_reports_start_and_success(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
-
-    read_fd, write_fd = os.pipe()
-    monkeypatch.setattr(imaging, "_open_pty", lambda: (read_fd, write_fd))
-    monkeypatch.setattr(
-        imaging.subprocess, "Popen",
-        _make_fake_popen(output=b"Completed: 12%\rCompleted: 57%\rCompleted: 100%\r", returncode=0),
-    )
+    monkeypatch.setattr(imaging.subprocess, "run", lambda command, cwd=None, check=False: type("R", (), {"returncode": 0})())
 
     fractions = []
     result = imaging.restore_golden_image(
@@ -92,15 +70,12 @@ def test_restore_golden_image_reports_progress_from_output(tmp_path, monkeypatch
 
     assert result.executed is True
     assert result.returncode == 0
-    assert fractions == [0.12, 0.57, 0.99, 1.0]
+    assert fractions == [None, 1.0]
 
 
-def test_restore_golden_image_progress_reports_none_on_failure(tmp_path, monkeypatch):
+def test_restore_golden_image_reports_start_and_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
-
-    read_fd, write_fd = os.pipe()
-    monkeypatch.setattr(imaging, "_open_pty", lambda: (read_fd, write_fd))
-    monkeypatch.setattr(imaging.subprocess, "Popen", _make_fake_popen(output=b"", returncode=1))
+    monkeypatch.setattr(imaging.subprocess, "run", lambda command, cwd=None, check=False: type("R", (), {"returncode": 1})())
 
     fractions = []
     result = imaging.restore_golden_image(
@@ -109,7 +84,7 @@ def test_restore_golden_image_progress_reports_none_on_failure(tmp_path, monkeyp
 
     assert result.executed is True
     assert result.returncode == 1
-    assert fractions == [None]
+    assert fractions == [None, None]
 
 
 def test_schedule_reimage_dry_run_does_not_execute(monkeypatch):

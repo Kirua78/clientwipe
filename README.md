@@ -80,11 +80,14 @@ flowchart LR
   L'ecran de progression affiche les trois etapes separement (detection
   du chiffrement, effacement, reimagage), chacune avec son propre
   pourcentage quand il est mesurable : reel pour l'effacement logiciel
-  de secours (lu depuis `/proc/<pid>/io` pendant que `shred` tourne) et
-  pour le reimagage (extrait de la sortie de Clonezilla/partclone,
-  capturee via un pseudo-terminal pour contourner leur bufferisation),
+  de secours (lu depuis `/proc/<pid>/io` pendant que `shred` tourne),
   sinon un indicateur d'activite simple pour les operations quasi
-  instantanees (destruction de cle LUKS, effacement natif NVMe).
+  instantanees (destruction de cle LUKS, effacement natif NVMe) et pour
+  le reimagage (Clonezilla). Un vrai pourcentage pour le reimagage a ete
+  tente (capture de la sortie de Clonezilla/partclone via un
+  pseudo-terminal) puis retire : trouve en conditions reelles a bloquer
+  indefiniment le reimagage sur du vrai materiel, sans fausse mesure
+  possible a corriger sans acces direct pour iterer.
   Le script `install_live_wipe_kiosk.sh` (a executer une seule fois, sur
   Cle A elle-meme) configure une **connexion automatique** (LightDM) et un
   **lancement automatique** de cette interface a l'ouverture de session,
@@ -420,15 +423,13 @@ sauvegarde, pour les recuperer a ce stade.
 - L'interface graphique (`clientwipe live-wipe-gui`) a ete validee en
   conditions reelles sur Cle A (autologin, lancement automatique,
   selection du disque, effacement NVMe natif). La progression par etape
-  avec pourcentage reste plus recente : le pourcentage de l'effacement
-  logiciel de secours (`/proc/<pid>/io`) est simple et fiable, mais
-  l'extraction du pourcentage depuis la sortie de Clonezilla/partclone
-  (voir `imaging.py`) depend d'un format de texte suppose, pas verifie
-  en conditions reelles au moment de l'ecriture de ces lignes. Si ce
-  format ne correspond pas, l'etape degrade proprement vers un simple
-  indicateur d'activite (pas de plantage, pas de pourcentage fige ou
-  faux), mais une vraie progression chiffree du reimagage n'est donc pas
-  garantie tant que ce n'est pas confirme sur le materiel reel.
+  avec pourcentage reel pour l'effacement logiciel de secours
+  (`/proc/<pid>/io`) est simple et fiable, testee et confirmee. Une
+  tentative d'extraire un pourcentage reel du reimagage (capture de la
+  sortie de Clonezilla/partclone via un pseudo-terminal) a du etre
+  abandonnee apres avoir bloque un reimagage reel indefiniment sur Cle A
+  (voir l'historique git) ; cette etape affiche donc deliberement un
+  simple indicateur d'activite, pas de pourcentage.
 - La detection BitLocker (`clientwipe/bitlocker.py`) est testee
   unitairement (`cryptsetup bitlkDump` simule) mais pas encore validee sur
   un vrai volume BitLocker reel, faute de poste Windows chiffre disponible

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -10,20 +8,6 @@ from typing import Callable, List, Optional
 
 ProgressCallback = Callable[[Optional[float]], None]
 
-_PERCENT_RE = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%")
-
-
-def _open_pty():
-    """A separately-monkeypatchable seam around pty.openpty(), imported
-    lazily here rather than at module level: pty depends on termios, which
-    does not exist on Windows, and this whole module must stay importable
-    there too (clientwipe itself only ever runs on Linux, but its test
-    suite is developed cross-platform).
-    """
-    import pty
-
-    return pty.openpty()
-
 
 @dataclass
 class ImagingResult:
@@ -31,46 +15,6 @@ class ImagingResult:
     executed: bool
     returncode: Optional[int] = None
     error: Optional[str] = None
-
-
-def _drain_progress(master_fd: int, progress_callback: ProgressCallback) -> None:
-    """Read from `master_fd` until it closes, extracting the latest
-    percentage seen so far and reporting it whenever it changes.
-
-    Reads through a pty rather than a plain pipe: most CLI tools (partclone
-    included) fully buffer stdout when it is not a terminal, which would
-    hold back all output until the process exits, making "live" progress
-    parsing pointless. A pty makes the child think it is talking to an
-    interactive terminal, so the carriage-return-driven progress line
-    Clonezilla/partclone print actually streams instead of being withheld.
-    """
-    buffer = ""
-    last_fraction: Optional[float] = None
-    while True:
-        try:
-            chunk = os.read(master_fd, 1024)
-        except OSError:
-            break
-        if not chunk:
-            break
-        buffer += chunk.decode("utf-8", errors="replace")
-        buffer = buffer[-4096:]
-
-        # Report every match seen so far, not just the last one: a single
-        # read() can return several progress updates at once (observed in
-        # tests, and plausible in practice under OS buffering jitter), and
-        # only taking the last would silently skip the ones in between.
-        # Already-reported fractions are naturally skipped by the
-        # last_fraction check below even though they stay in `buffer` (it
-        # is a sliding window, not consumed).
-        for match in _PERCENT_RE.finditer(buffer):
-            try:
-                fraction = min(float(match.group(1)) / 100.0, 0.99)
-            except ValueError:
-                continue
-            if fraction != last_fraction:
-                last_fraction = fraction
-                progress_callback(fraction)
 
 
 def restore_golden_image(
@@ -94,12 +38,17 @@ def restore_golden_image(
     other wrapper in this module, hence the explicit `shutil.which` check
     below, matching detect_luks/erase_luks_key/schedule_reimage_on_next_boot.
 
-    `progress_callback`, when given, is called with a fraction between 0.0
-    and 1.0 (see _drain_progress) each time a new percentage is seen in
-    ocs-sr/partclone's output, and once more with 1.0 (or None on failure)
-    when the restore finishes. When it is not given, this runs exactly as
-    before (a plain blocking subprocess.run()), so existing callers (the
-    CLI) are unaffected.
+    `progress_callback`, when given, is called with None just before ocs-sr
+    starts and with 1.0 (or None on failure) once it finishes, so a caller
+    can show "this step is running" without a stalled or stale display.
+    It does not get a real percentage: an earlier version captured ocs-sr's
+    output live through a pty to parse one out of Clonezilla/partclone's
+    own progress text, but that hung real restores indefinitely on actual
+    hardware (very likely some part of the Clonezilla process tree keeps
+    its copy of the pty open past the point this function can detect, so
+    the read loop waiting for it to close never returns) with no reliable
+    fix available without live access to that environment to iterate on.
+    Reverted in favor of this always-correct, if less informative, version.
     """
     command = [
         "ocs-sr",
@@ -117,30 +66,19 @@ def restore_golden_image(
     if dry_run:
         return ImagingResult(command=command, executed=False)
 
-    if progress_callback is None:
-        completed = subprocess.run(command, cwd=str(images_repository), check=False)
-        return ImagingResult(
-            command=command,
-            executed=True,
-            returncode=completed.returncode,
-            error=None if completed.returncode == 0 else f"ocs-sr a renvoye le code {completed.returncode}",
-        )
+    if progress_callback is not None:
+        progress_callback(None)
 
-    master_fd, slave_fd = _open_pty()
-    process = subprocess.Popen(command, cwd=str(images_repository), stdout=slave_fd, stderr=slave_fd, close_fds=True)
-    os.close(slave_fd)
-    try:
-        _drain_progress(master_fd, progress_callback)
-    finally:
-        os.close(master_fd)
+    completed = subprocess.run(command, cwd=str(images_repository), check=False)
 
-    returncode = process.wait()
-    progress_callback(1.0 if returncode == 0 else None)
+    if progress_callback is not None:
+        progress_callback(1.0 if completed.returncode == 0 else None)
+
     return ImagingResult(
         command=command,
         executed=True,
-        returncode=returncode,
-        error=None if returncode == 0 else f"ocs-sr a renvoye le code {returncode}",
+        returncode=completed.returncode,
+        error=None if completed.returncode == 0 else f"ocs-sr a renvoye le code {completed.returncode}",
     )
 
 
