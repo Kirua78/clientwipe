@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from typing import Callable, List, Optional
 ProgressCallback = Callable[[Optional[float]], None]
 
 _PARTIMAG = Path("/home/partimag")
+_PERCENT_RE = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%")
 
 
 @dataclass
@@ -46,6 +48,82 @@ def _unmount_partimag() -> None:
     subprocess.run(["umount", str(_PARTIMAG)], capture_output=True, text=True, check=False)
 
 
+def _open_pty():
+    """A separately-monkeypatchable seam around pty.openpty(), imported
+    lazily here rather than at module level: pty depends on termios, which
+    does not exist on Windows, and this module must stay importable there
+    too (clientwipe itself only ever runs on Linux, but its tests are
+    developed cross-platform).
+    """
+    import pty
+
+    return pty.openpty()
+
+
+def _drain_progress(master_fd: int, progress_callback: ProgressCallback) -> None:
+    """Read from `master_fd` until it closes, extracting the latest
+    percentage seen so far and reporting it whenever it changes.
+
+    Reads through a pty rather than a plain pipe: most CLI tools (partclone
+    included) fully buffer stdout when it is not a terminal, which would
+    hold back all output until the process exits, making "live" progress
+    parsing pointless. A pty makes the child think it is talking to an
+    interactive terminal, so the carriage-return-driven progress line
+    Clonezilla/partclone print actually streams instead of being withheld.
+    """
+    buffer = ""
+    last_fraction: Optional[float] = None
+    while True:
+        try:
+            chunk = os.read(master_fd, 1024)
+        except OSError:
+            break
+        if not chunk:
+            break
+        buffer += chunk.decode("utf-8", errors="replace")
+        buffer = buffer[-4096:]
+
+        # Report every match seen so far, not just the last one: a single
+        # read() can return several progress updates at once, and only
+        # taking the last would silently skip the ones in between. Already
+        # reported fractions are naturally skipped by the last_fraction
+        # check even though they stay in `buffer` (a sliding window, not
+        # consumed).
+        for match in _PERCENT_RE.finditer(buffer):
+            try:
+                fraction = min(float(match.group(1)) / 100.0, 0.99)
+            except ValueError:
+                continue
+            if fraction != last_fraction:
+                last_fraction = fraction
+                progress_callback(fraction)
+
+
+def _run_ocs_sr_with_progress(
+    command: List[str], images_repository: Path, env: dict, progress_callback: ProgressCallback,
+) -> int:
+    """Same process setup as the plain subprocess.run() path (stdin
+    silenced, batch mode, detached session, see restore_golden_image's
+    docstring for why each of those is there), but through a pty so
+    ocs-sr/partclone's own progress text can be parsed out live instead of
+    only reporting start/end. Reintroduced after _bind_mount_partimag was
+    found to be the real reason an earlier version of this hung on real
+    hardware: that was never actually the pty's fault, just always tested
+    together with the /home/partimag bug still present.
+    """
+    master_fd, slave_fd = _open_pty()
+    process = subprocess.Popen(
+        command, cwd=str(images_repository), stdin=subprocess.DEVNULL,
+        stdout=slave_fd, stderr=slave_fd, env=env, start_new_session=True,
+    )
+    os.close(slave_fd)
+    try:
+        _drain_progress(master_fd, progress_callback)
+    finally:
+        os.close(master_fd)
+    return process.wait()
+
+
 def restore_golden_image(
     image_name: str,
     device: str,
@@ -68,31 +146,30 @@ def restore_golden_image(
     below, matching detect_luks/erase_luks_key/schedule_reimage_on_next_boot.
 
     `progress_callback`, when given, is called with None just before ocs-sr
-    starts and with 1.0 (or None on failure) once it finishes, so a caller
-    can show "this step is running" without a stalled or stale display.
-    It does not get a real percentage: an earlier version captured ocs-sr's
-    output live through a pty to parse one out of Clonezilla/partclone's
-    own progress text, but that hung real restores indefinitely on actual
-    hardware. Reverted, but the hang turned out not to be the pty after
-    all: it reproduced identically with a plain subprocess.run(), stdin
-    inherited as usual. Adding `stdin=subprocess.DEVNULL` alone did not fix
-    it either: ocs-sr is Clonezilla's live-scripts toolkit, which is known
-    to read some of its confirmations straight from /dev/tty rather than
-    stdin precisely so a redirected stdin cannot silence them, so it still
-    found something to block on even then. The combination below finally
-    worked in testing: `ocs_batch_mode=1` is the environment variable
-    Clonezilla's own docs name for unattended use (meant for PXE/scripted
-    deployments exactly like this one), suppressing those prompts at the
-    source instead of trying to out-redirect them, and
+    starts, with a fraction between 0.0 and 1.0 (see _drain_progress) each
+    time a new percentage is seen in ocs-sr/partclone's own output, and
+    with 1.0 (or None on failure) once it finishes. If the pattern it
+    expects never shows up (Clonezilla changes its output format, for
+    instance), this degrades to only the start/end calls rather than
+    showing a stale or fabricated number.
+
+    `stdin=subprocess.DEVNULL` below guarantees ocs-sr's own prompts (some
+    read straight from /dev/tty rather than stdin, specifically so a
+    redirected stdin cannot silence them) cannot block waiting for input;
+    `ocs_batch_mode=1` is the environment variable Clonezilla's own docs
+    name for unattended use (meant for exactly this kind of scripted
+    deployment), suppressing those prompts at the source; and
     `start_new_session=True` detaches the child from any controlling
     terminal entirely, so even /dev/tty is not available to read from if
-    something still tries.
-
-    All three of those were real fixes for real problems, but none of
-    them were actually why ocs-sr kept failing on real hardware: it was
-    refusing outright, before any of this mattered, because it hardcodes
-    /home/partimag as its images repository and ignores `cwd` completely.
-    See _bind_mount_partimag.
+    something still tries. All three were found necessary on real
+    hardware, but turned out not to be the actual reason ocs-sr kept
+    failing there: it was refusing outright, before any of this mattered,
+    because it hardcodes /home/partimag as its images repository and
+    ignores `cwd` completely. See _bind_mount_partimag. An even earlier
+    version used a pty to capture live progress the same way this one
+    does, got blamed for the hang that was really /home/partimag, and was
+    reverted; reading ocs-sr's output through a pty was never actually the
+    problem, so it is back.
     """
     command = [
         "ocs-sr",
@@ -118,23 +195,24 @@ def restore_golden_image(
         )
 
     try:
-        if progress_callback is not None:
-            progress_callback(None)
-
         env = {**os.environ, "ocs_batch_mode": "1"}
-        completed = subprocess.run(
-            command, cwd=str(images_repository), stdin=subprocess.DEVNULL,
-            env=env, start_new_session=True, check=False,
-        )
 
-        if progress_callback is not None:
-            progress_callback(1.0 if completed.returncode == 0 else None)
+        if progress_callback is None:
+            completed = subprocess.run(
+                command, cwd=str(images_repository), stdin=subprocess.DEVNULL,
+                env=env, start_new_session=True, check=False,
+            )
+            returncode = completed.returncode
+        else:
+            progress_callback(None)
+            returncode = _run_ocs_sr_with_progress(command, images_repository, env, progress_callback)
+            progress_callback(1.0 if returncode == 0 else None)
 
         return ImagingResult(
             command=command,
             executed=True,
-            returncode=completed.returncode,
-            error=None if completed.returncode == 0 else f"ocs-sr a renvoye le code {completed.returncode}",
+            returncode=returncode,
+            error=None if returncode == 0 else f"ocs-sr a renvoye le code {returncode}",
         )
     finally:
         _unmount_partimag()

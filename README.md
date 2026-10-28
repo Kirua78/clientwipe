@@ -80,14 +80,15 @@ flowchart LR
   L'ecran de progression affiche les trois etapes separement (detection
   du chiffrement, effacement, reimagage), chacune avec son propre
   pourcentage quand il est mesurable : reel pour l'effacement logiciel
-  de secours (lu depuis `/proc/<pid>/io` pendant que `shred` tourne),
-  sinon un indicateur d'activite simple pour les operations quasi
-  instantanees (destruction de cle LUKS, effacement natif NVMe) et pour
-  le reimagage (Clonezilla). Un vrai pourcentage pour le reimagage a ete
-  tente (capture de la sortie de Clonezilla/partclone via un
-  pseudo-terminal) puis retire : trouve en conditions reelles a bloquer
-  indefiniment le reimagage sur du vrai materiel, sans fausse mesure
-  possible a corriger sans acces direct pour iterer.
+  de secours (lu depuis `/proc/<pid>/io` pendant que `shred` tourne), reel
+  aussi pour le reimagage (sortie de Clonezilla/partclone capturee en
+  direct via un pseudo-terminal, pour contourner leur bufferisation de
+  stdout qui bloquerait sinon toute sortie "live" jusqu'a la fin), sinon
+  un indicateur d'activite simple pour les operations quasi instantanees
+  (destruction de cle LUKS, effacement natif NVMe). Si le motif de
+  pourcentage attendu dans la sortie de Clonezilla ne correspond pas,
+  cette etape degrade proprement vers l'indicateur d'activite plutot que
+  d'afficher un chiffre fige ou faux.
   Le script `install_live_wipe_kiosk.sh` (a executer une seule fois, sur
   Cle A elle-meme) configure une **connexion automatique** (LightDM) et un
   **lancement automatique** de cette interface a l'ouverture de session,
@@ -420,29 +421,39 @@ sauvegarde, pour les recuperer a ce stade.
   dans un etat recuperable (table de partitions simplement absente, pas de
   corruption bloquante) : relancer l'operation suffit, sans manipulation de
   reparation prealable.
-- L'interface graphique (`clientwipe live-wipe-gui`) a ete validee en
-  conditions reelles sur Cle A (autologin, lancement automatique,
-  selection du disque, effacement NVMe natif). La progression par etape
-  avec pourcentage reel pour l'effacement logiciel de secours
-  (`/proc/<pid>/io`) est simple et fiable, testee et confirmee. Une
-  tentative d'extraire un pourcentage reel du reimagage (capture de la
-  sortie de Clonezilla/partclone via un pseudo-terminal) a du etre
-  abandonnee apres avoir bloque un reimagage reel indefiniment sur Cle A
-  (voir l'historique git) ; cette etape affiche donc deliberement un
-  simple indicateur d'activite, pas de pourcentage. Un blocage distinct,
-  plus trompeur, a egalement ete trouve et corrige en conditions reelles :
-  le certificat genere en fin d'operation s'ecrivait par defaut dans
-  `/mnt/clientwipe-gui-images/certificates`, sur la meme partition que le
-  golden master, montee en lecture seule expres (voir
-  `find_images_repository`). L'ecriture echouait donc systematiquement,
-  tuant silencieusement le thread d'arriere-plan sans jamais remonter
-  d'erreur a l'interface, qui restait bloquee sur "operation en cours"
-  indefiniment, pile comme un vrai blocage de Clonezilla aurait semble se
-  comporter (c'est ce qui a rendu ce bug si long a isoler). Corrige : le
-  dossier de sortie par defaut est desormais `/var/log/clientwipe/certificates`
-  (sur le disque en lecture-ecriture de Cle A), et toute exception dans ce
-  thread remonte maintenant systematiquement a l'interface comme un echec
-  affiche, plus jamais comme un blocage silencieux.
+- L'interface graphique (`clientwipe live-wipe-gui`) a ete validee de
+  bout en bout en conditions reelles sur Cle A : autologin, lancement
+  automatique, selection du disque, effacement NVMe natif, et reimagage
+  reel confirme (table de partitions du disque cible correspondant
+  exactement a celle du golden master apres l'operation). Trois bugs
+  reels ont ete trouves et corriges au passage, tous masques les uns par
+  les autres de facon trompeuse :
+  - Le certificat genere en fin d'operation s'ecrivait par defaut dans
+    `/mnt/clientwipe-gui-images/certificates`, sur la meme partition que
+    le golden master, montee en lecture seule expres (voir
+    `find_images_repository`). L'ecriture echouait donc systematiquement,
+    tuant silencieusement le thread d'arriere-plan sans jamais remonter
+    d'erreur a l'interface, qui restait bloquee sur "operation en cours"
+    indefiniment, pile comme un vrai blocage de Clonezilla aurait semble
+    se comporter. Corrige : le dossier de sortie par defaut est desormais
+    `/var/log/clientwipe/certificates` (disque en lecture-ecriture de Cle
+    A), et toute exception dans ce thread remonte maintenant
+    systematiquement a l'interface comme un echec affiche, plus jamais
+    comme un blocage silencieux.
+  - `ocs-sr` (Clonezilla) ignore completement le `cwd` qu'on lui passe et
+    exige toujours son depot d'images a l'emplacement fixe
+    `/home/partimag`, sans quoi il refuse de demarrer. `imaging.py`
+    monte desormais le depot reellement trouve a cet endroit (bind mount)
+    juste avant de lancer `ocs-sr`.
+  - Une premiere tentative de capturer la sortie de Clonezilla/partclone
+    en direct (pour en extraire un pourcentage reel, via un
+    pseudo-terminal) avait ete accusee a tort d'un blocage indefini et
+    retiree : le vrai coupable etait `/home/partimag` manquant, present
+    dans les deux versions testees a l'epoque. Reintroduite une fois les
+    deux bugs ci-dessus corriges ; si le motif de pourcentage attendu ne
+    correspond pas a la sortie reelle de Clonezilla, cette etape degrade
+    proprement vers un simple indicateur d'activite plutot que d'afficher
+    un chiffre fige ou faux.
 - La detection BitLocker (`clientwipe/bitlocker.py`) est testee
   unitairement (`cryptsetup bitlkDump` simule) mais pas encore validee sur
   un vrai volume BitLocker reel, faute de poste Windows chiffre disponible

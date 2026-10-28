@@ -1,4 +1,23 @@
+import os
+
 from clientwipe import imaging
+
+
+def _fake_mount_run(command, cwd=None, stdin=None, env=None, start_new_session=False, check=False, capture_output=False, text=False):
+    return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+
+def _make_fake_popen(output: bytes, returncode: int):
+    class FakePopen:
+        def __init__(self, command, cwd=None, stdin=None, stdout=None, stderr=None, env=None, start_new_session=False):
+            self.command = command
+            if output:
+                os.write(stdout, output)
+
+        def wait(self):
+            return returncode
+
+    return FakePopen
 
 
 def test_restore_golden_image_dry_run_does_not_execute(tmp_path, monkeypatch):
@@ -134,10 +153,17 @@ def test_restore_golden_image_reports_error_on_nonzero_returncode(tmp_path, monk
     assert "1" in result.error
 
 
-def test_restore_golden_image_reports_start_and_success(tmp_path, monkeypatch):
+def test_restore_golden_image_reports_progress_from_output(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
     monkeypatch.setattr(imaging, "_PARTIMAG", tmp_path / "partimag")
-    monkeypatch.setattr(imaging.subprocess, "run", _make_fake_run(0))
+    monkeypatch.setattr(imaging.subprocess, "run", _fake_mount_run)
+
+    read_fd, write_fd = os.pipe()
+    monkeypatch.setattr(imaging, "_open_pty", lambda: (read_fd, write_fd))
+    monkeypatch.setattr(
+        imaging.subprocess, "Popen",
+        _make_fake_popen(output=b"Completed: 12%\rCompleted: 57%\rCompleted: 100%\r", returncode=0),
+    )
 
     fractions = []
     result = imaging.restore_golden_image(
@@ -146,13 +172,17 @@ def test_restore_golden_image_reports_start_and_success(tmp_path, monkeypatch):
 
     assert result.executed is True
     assert result.returncode == 0
-    assert fractions == [None, 1.0]
+    assert fractions == [None, 0.12, 0.57, 0.99, 1.0]
 
 
-def test_restore_golden_image_reports_start_and_failure(tmp_path, monkeypatch):
+def test_restore_golden_image_progress_reports_none_on_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
     monkeypatch.setattr(imaging, "_PARTIMAG", tmp_path / "partimag")
-    monkeypatch.setattr(imaging.subprocess, "run", _make_fake_run(1))
+    monkeypatch.setattr(imaging.subprocess, "run", _fake_mount_run)
+
+    read_fd, write_fd = os.pipe()
+    monkeypatch.setattr(imaging, "_open_pty", lambda: (read_fd, write_fd))
+    monkeypatch.setattr(imaging.subprocess, "Popen", _make_fake_popen(output=b"", returncode=1))
 
     fractions = []
     result = imaging.restore_golden_image(
