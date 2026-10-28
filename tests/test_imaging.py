@@ -31,10 +31,12 @@ def test_restore_golden_image_executes_when_confirmed(tmp_path, monkeypatch):
     class FakeCompleted:
         returncode = 0
 
-    def fake_run(command, cwd=None, stdin=None, check=False):
+    def fake_run(command, cwd=None, stdin=None, env=None, start_new_session=False, check=False):
         calls["command"] = command
         calls["cwd"] = cwd
         calls["stdin"] = stdin
+        calls["env"] = env
+        calls["start_new_session"] = start_new_session
         return FakeCompleted()
 
     monkeypatch.setattr(imaging.subprocess, "run", fake_run)
@@ -47,15 +49,23 @@ def test_restore_golden_image_executes_when_confirmed(tmp_path, monkeypatch):
     assert calls["cwd"] == str(tmp_path)
     assert "golden-kali" in calls["command"]
     assert "/dev/sda" in calls["command"]
-    # Regression test: ocs-sr was found to block forever on a read() under
-    # the GUI's launch chain (see restore_golden_image's docstring). This
-    # guarantees it gets immediate EOF instead, however it got spawned.
+    # Regression test: ocs-sr was found to block forever reading a
+    # confirmation under the GUI's launch chain (see restore_golden_image's
+    # docstring). stdin=DEVNULL alone was not enough (Clonezilla reads some
+    # prompts from /dev/tty, bypassing a redirected stdin); ocs_batch_mode
+    # suppresses them at the source and start_new_session removes any
+    # controlling terminal to read from even if something still tries.
     assert calls["stdin"] == imaging.subprocess.DEVNULL
+    assert calls["env"]["ocs_batch_mode"] == "1"
+    assert calls["start_new_session"] is True
 
 
 def test_restore_golden_image_reports_error_on_nonzero_returncode(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
-    monkeypatch.setattr(imaging.subprocess, "run", lambda command, cwd=None, stdin=None, check=False: type("R", (), {"returncode": 1})())
+    monkeypatch.setattr(
+        imaging.subprocess, "run",
+        lambda command, cwd=None, stdin=None, env=None, start_new_session=False, check=False: type("R", (), {"returncode": 1})(),
+    )
 
     result = imaging.restore_golden_image("golden-kali", "/dev/sda", tmp_path, dry_run=False)
 
@@ -66,7 +76,10 @@ def test_restore_golden_image_reports_error_on_nonzero_returncode(tmp_path, monk
 
 def test_restore_golden_image_reports_start_and_success(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
-    monkeypatch.setattr(imaging.subprocess, "run", lambda command, cwd=None, stdin=None, check=False: type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(
+        imaging.subprocess, "run",
+        lambda command, cwd=None, stdin=None, env=None, start_new_session=False, check=False: type("R", (), {"returncode": 0})(),
+    )
 
     fractions = []
     result = imaging.restore_golden_image(
@@ -80,7 +93,10 @@ def test_restore_golden_image_reports_start_and_success(tmp_path, monkeypatch):
 
 def test_restore_golden_image_reports_start_and_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
-    monkeypatch.setattr(imaging.subprocess, "run", lambda command, cwd=None, stdin=None, check=False: type("R", (), {"returncode": 1})())
+    monkeypatch.setattr(
+        imaging.subprocess, "run",
+        lambda command, cwd=None, stdin=None, env=None, start_new_session=False, check=False: type("R", (), {"returncode": 1})(),
+    )
 
     fractions = []
     result = imaging.restore_golden_image(

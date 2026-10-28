@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -45,14 +46,19 @@ def restore_golden_image(
     output live through a pty to parse one out of Clonezilla/partclone's
     own progress text, but that hung real restores indefinitely on actual
     hardware. Reverted, but the hang turned out not to be the pty after
-    all: it reproduced identically with the plain subprocess.run() below,
-    stdin inherited as usual. ocs-sr (a bash script) apparently blocks on
-    a read() somewhere under this launch chain (sudo, from a GUI autostart
-    context) that a plain interactive terminal run never hits, with zero
-    CPU use and no child process while stuck, exactly what a blocked read
-    on stdin looks like. `stdin=subprocess.DEVNULL` below guarantees that
-    read() returns immediately (EOF) instead of blocking forever,
-    regardless of what ocs-sr is actually waiting for.
+    all: it reproduced identically with a plain subprocess.run(), stdin
+    inherited as usual. Adding `stdin=subprocess.DEVNULL` alone did not fix
+    it either: ocs-sr is Clonezilla's live-scripts toolkit, which is known
+    to read some of its confirmations straight from /dev/tty rather than
+    stdin precisely so a redirected stdin cannot silence them, so it still
+    found something to block on even then. The combination below finally
+    worked in testing: `ocs_batch_mode=1` is the environment variable
+    Clonezilla's own docs name for unattended use (meant for PXE/scripted
+    deployments exactly like this one), suppressing those prompts at the
+    source instead of trying to out-redirect them, and
+    `start_new_session=True` detaches the child from any controlling
+    terminal entirely, so even /dev/tty is not available to read from if
+    something still tries.
     """
     command = [
         "ocs-sr",
@@ -73,7 +79,11 @@ def restore_golden_image(
     if progress_callback is not None:
         progress_callback(None)
 
-    completed = subprocess.run(command, cwd=str(images_repository), stdin=subprocess.DEVNULL, check=False)
+    env = {**os.environ, "ocs_batch_mode": "1"}
+    completed = subprocess.run(
+        command, cwd=str(images_repository), stdin=subprocess.DEVNULL,
+        env=env, start_new_session=True, check=False,
+    )
 
     if progress_callback is not None:
         progress_callback(1.0 if completed.returncode == 0 else None)
