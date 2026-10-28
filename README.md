@@ -81,6 +81,24 @@ passe jamais inapercue.
 - Mode demo sans risque (`clientwipe demo`) pour tester sans toucher a la
   moindre vraie donnee.
 
+## Utilisation (cle autonome)
+
+1. Branchez la cle sur le poste a nettoyer.
+2. Au demarrage, ouvrez le menu de boot (F11 ou equivalent) et choisissez
+   de demarrer sur la cle.
+3. L'interface s'ouvre automatiquement. Selectionnez le disque a effacer
+   dans la liste (le disque de demarrage de la cle elle-meme n'apparait
+   jamais, impossible de se tromper de cible).
+4. Confirmez. Une phrase de passe peut etre demandee si l'image de
+   reference est chiffree, sinon laissez le champ vide et continuez.
+5. Laissez l'operation se derouler sans toucher a la machine (effacement
+   puis reimagage, de quelques minutes a plusieurs heures selon le
+   disque).
+6. Une fois termine, un ecran affiche le resultat et le chemin du
+   certificat genere. Cliquez sur Eteindre.
+7. Debranchez la cle. Le poste redemarre directement sur une installation
+   propre, pret pour la mission suivante.
+
 ## Licence
 
 MIT. Voir [LICENSE](LICENSE).
