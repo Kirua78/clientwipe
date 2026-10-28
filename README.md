@@ -429,7 +429,20 @@ sauvegarde, pour les recuperer a ce stade.
   sortie de Clonezilla/partclone via un pseudo-terminal) a du etre
   abandonnee apres avoir bloque un reimagage reel indefiniment sur Cle A
   (voir l'historique git) ; cette etape affiche donc deliberement un
-  simple indicateur d'activite, pas de pourcentage.
+  simple indicateur d'activite, pas de pourcentage. Un blocage distinct,
+  plus trompeur, a egalement ete trouve et corrige en conditions reelles :
+  le certificat genere en fin d'operation s'ecrivait par defaut dans
+  `/mnt/clientwipe-gui-images/certificates`, sur la meme partition que le
+  golden master, montee en lecture seule expres (voir
+  `find_images_repository`). L'ecriture echouait donc systematiquement,
+  tuant silencieusement le thread d'arriere-plan sans jamais remonter
+  d'erreur a l'interface, qui restait bloquee sur "operation en cours"
+  indefiniment, pile comme un vrai blocage de Clonezilla aurait semble se
+  comporter (c'est ce qui a rendu ce bug si long a isoler). Corrige : le
+  dossier de sortie par defaut est desormais `/var/log/clientwipe/certificates`
+  (sur le disque en lecture-ecriture de Cle A), et toute exception dans ce
+  thread remonte maintenant systematiquement a l'interface comme un echec
+  affiche, plus jamais comme un blocage silencieux.
 - La detection BitLocker (`clientwipe/bitlocker.py`) est testee
   unitairement (`cryptsetup bitlkDump` simule) mais pas encore validee sur
   un vrai volume BitLocker reel, faute de poste Windows chiffre disponible

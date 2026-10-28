@@ -12,7 +12,16 @@ from .live_wipe import LiveWipeReport, live_wipe
 
 DEFAULT_IMAGE_NAME = "KaliState0"
 DEFAULT_MOUNT_POINT = Path("/mnt/clientwipe-gui-images")
-DEFAULT_OUT_DIR = Path("/mnt/clientwipe-gui-images/certificates")
+# Deliberately NOT under DEFAULT_MOUNT_POINT: that partition holds the
+# golden master and is mounted read-only (see find_images_repository), so
+# writing a certificate there always failed with OSError (read-only file
+# system), silently killing the background thread and leaving the GUI
+# stuck on "operation en cours" forever, with no result ever shown. Found
+# on real hardware: every "stuck" run in testing was actually this crash,
+# not a slow or hung wipe/reimage. /var/log is Cle A's own writable root
+# filesystem, independent of both the golden master partition and the
+# disk being wiped.
+DEFAULT_OUT_DIR = Path("/var/log/clientwipe/certificates")
 DEFAULT_FALLBACK_WIPE_PASSES = 1
 
 STEPS = [
@@ -412,24 +421,39 @@ class LiveWipeGuiApp:
         self.root.after(200, self._poll_queue)
 
     def _run_wipe(self) -> None:
-        images_repository = find_images_repository(self.image_name, self.mount_point, exclude_device=self.selected_device)
-        if images_repository is None:
-            self.result_queue.put(("error", "Golden master introuvable sur les disques disponibles."))
-            return
+        # This runs in a background thread: an exception here that escapes
+        # uncaught does NOT reach the Tkinter main thread at all, it just
+        # prints a traceback nobody sees (buried in .xsession-errors) and
+        # kills this thread silently, leaving the GUI stuck on "operation
+        # en cours" forever with no result ever shown. Found on real
+        # hardware this way: an OSError writing the certificate (see
+        # DEFAULT_OUT_DIR) looked identical to live_wipe() itself hanging,
+        # costing a lot of time to tell apart. This try/except guarantees
+        # the operator always sees *something* (an error screen, even for
+        # a bug), never an indefinite silent hang again.
+        try:
+            images_repository = find_images_repository(
+                self.image_name, self.mount_point, exclude_device=self.selected_device,
+            )
+            if images_repository is None:
+                self.result_queue.put(("error", "Golden master introuvable sur les disques disponibles."))
+                return
 
-        def on_progress(step: str, fraction: Optional[float], detail: str) -> None:
-            self.result_queue.put(("progress", step, fraction, detail))
+            def on_progress(step: str, fraction: Optional[float], detail: str) -> None:
+                self.result_queue.put(("progress", step, fraction, detail))
 
-        report = live_wipe(
-            self.selected_device,
-            self.image_name,
-            images_repository,
-            fallback_wipe_passes=self.fallback_wipe_passes,
-            dry_run=False,
-            progress_callback=on_progress,
-        )
-        certificate = generate_live_wipe_certificate(report, self.out_dir)
-        self.result_queue.put(("done", report, certificate))
+            report = live_wipe(
+                self.selected_device,
+                self.image_name,
+                images_repository,
+                fallback_wipe_passes=self.fallback_wipe_passes,
+                dry_run=False,
+                progress_callback=on_progress,
+            )
+            certificate = generate_live_wipe_certificate(report, self.out_dir)
+            self.result_queue.put(("done", report, certificate))
+        except Exception as exc:  # noqa: BLE001 - last resort, see comment above
+            self.result_queue.put(("error", f"Erreur inattendue : {exc}"))
 
     def _update_step(self, step: str, fraction: Optional[float]) -> None:
         widgets = self.step_rows.get(step)
