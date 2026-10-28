@@ -390,14 +390,31 @@ class LiveWipeGuiApp:
             buttons, text="[ ANNULER ]", style="Secondary.TButton", command=self._show_device_selection,
         )
         cancel_button.pack(side="left", padx=10)
-        ttk.Button(
+        confirm_button = ttk.Button(
             buttons, text="[ CONFIRMER ET EFFACER ]", style="Danger.TButton", command=self._start_wipe,
-        ).pack(side="left", padx=10)
+        )
+        confirm_button.pack(side="left", padx=10)
 
         # Focus par defaut sur Annuler, jamais sur l'action destructive :
         # Entree/Echap sans navigation explicite au clavier n'efface rien.
+        # Tab/Shift-Tab geres explicitement plutot que de compter sur le
+        # parcours de focus par defaut de Tkinter, qui s'est avere ne rien
+        # faire du tout entre ces boutons au style personnalise.
         cancel_button.focus_set()
         self.root.bind("<Escape>", lambda event: self._show_device_selection())
+
+        def focus_confirm(event=None):
+            confirm_button.focus_set()
+            return "break"
+
+        def focus_cancel(event=None):
+            cancel_button.focus_set()
+            return "break"
+
+        cancel_button.bind("<Tab>", focus_confirm)
+        cancel_button.bind("<Shift-Tab>", focus_confirm)
+        confirm_button.bind("<Tab>", focus_cancel)
+        confirm_button.bind("<Shift-Tab>", focus_cancel)
 
     def _start_wipe(self) -> None:
         import tkinter as tk
