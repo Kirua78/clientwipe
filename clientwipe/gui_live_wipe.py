@@ -215,20 +215,19 @@ class LiveWipeGuiApp:
         style = ttk.Style(self.root)
         style.theme_use("clam")
 
-        # borderwidth=0 (the original setting here) left no room for a
-        # focus ring to ever render at all, on top of clam's default focus
-        # indicator not standing out against this palette anyway. Every
-        # button now reserves a 3px border, invisible (same color as its
-        # own background) until focused, then switched to bright white:
-        # found in testing to be the only way an operator could actually
-        # tell which button Tab had landed on.
+        # A border alone (tried first) was still too subtle to spot at a
+        # glance. Focus now fully inverts the button to a plain white
+        # background with black text, on top of the white border, same as
+        # a terminal's reverse-video cursor: unmistakable regardless of
+        # which of these colors the button normally uses.
         style.configure(
             "Primary.TButton", background=COLOR_ACCENT, foreground=COLOR_ACCENT_TEXT,
             font=(FONT_MONO, 14, "bold"), borderwidth=3, bordercolor=COLOR_ACCENT, padding=(26, 12),
         )
         style.map(
             "Primary.TButton",
-            background=[("active", COLOR_ACCENT_DARK)],
+            background=[("focus", "#ffffff"), ("active", COLOR_ACCENT_DARK)],
+            foreground=[("focus", "#000000")],
             bordercolor=[("focus", "#ffffff")],
         )
 
@@ -238,7 +237,8 @@ class LiveWipeGuiApp:
         )
         style.map(
             "Danger.TButton",
-            background=[("active", COLOR_DANGER_DARK)],
+            background=[("focus", "#ffffff"), ("active", COLOR_DANGER_DARK)],
+            foreground=[("focus", "#000000")],
             bordercolor=[("focus", "#ffffff")],
         )
 
@@ -248,7 +248,8 @@ class LiveWipeGuiApp:
         )
         style.map(
             "Secondary.TButton",
-            background=[("active", COLOR_NEUTRAL_DARK)],
+            background=[("focus", "#ffffff"), ("active", COLOR_NEUTRAL_DARK)],
+            foreground=[("focus", "#000000")],
             bordercolor=[("focus", "#ffffff")],
         )
 
