@@ -92,7 +92,7 @@ flowchart LR
   par erreur), confirmation explicite par bouton, puis resultat avec le
   chemin du certificat genere. Le golden master n'a pas besoin d'etre
   indique a la main : l'outil scanne les partitions disponibles pour
-  trouver celle qui le contient (`KaliState0` par defaut).
+  trouver celle qui le contient (`KaliState0-efi` par defaut).
   L'ecran de progression affiche les trois etapes separement (detection
   du chiffrement, effacement, reimagage), chacune avec son propre
   pourcentage quand il est mesurable : reel pour l'effacement logiciel

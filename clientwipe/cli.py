@@ -398,7 +398,7 @@ def build_parser() -> argparse.ArgumentParser:
         "live-wipe-gui",
         help="Version cliquable de live-wipe : selection du disque et confirmation a la souris, sans ligne de commande",
     )
-    p_live_wipe_gui.add_argument("--image", default=None, help="Nom de l'image golden a restaurer (defaut: KaliState0)")
+    p_live_wipe_gui.add_argument("--image", default=None, help="Nom de l'image golden a restaurer (defaut: KaliState0-efi)")
     p_live_wipe_gui.add_argument(
         "--mount-point", default=None,
         help="Dossier temporaire pour monter la partition contenant l'image golden si elle n'est pas deja montee",

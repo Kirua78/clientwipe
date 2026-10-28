@@ -10,7 +10,7 @@ from typing import List, Optional
 from .certificate import generate_live_wipe_certificate
 from .live_wipe import LiveWipeReport, live_wipe
 
-DEFAULT_IMAGE_NAME = "KaliState0"
+DEFAULT_IMAGE_NAME = "KaliState0-efi"
 DEFAULT_MOUNT_POINT = Path("/mnt/clientwipe-gui-images")
 # Deliberately NOT under DEFAULT_MOUNT_POINT: that partition holds the
 # golden master and is mounted read-only (see find_images_repository), so
