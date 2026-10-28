@@ -9,6 +9,8 @@ from typing import Callable, List, Optional
 
 ProgressCallback = Callable[[Optional[float]], None]
 
+_PARTIMAG = Path("/home/partimag")
+
 
 @dataclass
 class ImagingResult:
@@ -16,6 +18,32 @@ class ImagingResult:
     executed: bool
     returncode: Optional[int] = None
     error: Optional[str] = None
+
+
+def _bind_mount_partimag(images_repository: Path) -> Optional[str]:
+    """ocs-sr hardcodes /home/partimag as its images repository and
+    ignores `cwd` entirely: found on real hardware, where it refused
+    outright with "Please make sure your /home/partimag is a directory!!!"
+    before even starting, independent of every stdin/env/session fix tried
+    before this one. Bind-mounts the actual, dynamically found repository
+    (see find_images_repository, which can land on any partition) onto
+    that fixed path. Returns an error message on failure, None on success.
+    """
+    _PARTIMAG.mkdir(parents=True, exist_ok=True)
+    # Clears out any stale mount left behind by an earlier, interrupted
+    # run in the same boot session; harmless no-op otherwise.
+    subprocess.run(["umount", str(_PARTIMAG)], capture_output=True, text=True, check=False)
+    completed = subprocess.run(
+        ["mount", "--bind", str(images_repository), str(_PARTIMAG)],
+        capture_output=True, text=True, check=False,
+    )
+    if completed.returncode != 0:
+        return completed.stderr.strip() or "mount --bind a echoue"
+    return None
+
+
+def _unmount_partimag() -> None:
+    subprocess.run(["umount", str(_PARTIMAG)], capture_output=True, text=True, check=False)
 
 
 def restore_golden_image(
@@ -59,6 +87,12 @@ def restore_golden_image(
     `start_new_session=True` detaches the child from any controlling
     terminal entirely, so even /dev/tty is not available to read from if
     something still tries.
+
+    All three of those were real fixes for real problems, but none of
+    them were actually why ocs-sr kept failing on real hardware: it was
+    refusing outright, before any of this mattered, because it hardcodes
+    /home/partimag as its images repository and ignores `cwd` completely.
+    See _bind_mount_partimag.
     """
     command = [
         "ocs-sr",
@@ -76,24 +110,34 @@ def restore_golden_image(
     if dry_run:
         return ImagingResult(command=command, executed=False)
 
-    if progress_callback is not None:
-        progress_callback(None)
+    mount_error = _bind_mount_partimag(images_repository)
+    if mount_error is not None:
+        return ImagingResult(
+            command=command, executed=False,
+            error=f"Impossible de preparer /home/partimag (requis par ocs-sr) : {mount_error}",
+        )
 
-    env = {**os.environ, "ocs_batch_mode": "1"}
-    completed = subprocess.run(
-        command, cwd=str(images_repository), stdin=subprocess.DEVNULL,
-        env=env, start_new_session=True, check=False,
-    )
+    try:
+        if progress_callback is not None:
+            progress_callback(None)
 
-    if progress_callback is not None:
-        progress_callback(1.0 if completed.returncode == 0 else None)
+        env = {**os.environ, "ocs_batch_mode": "1"}
+        completed = subprocess.run(
+            command, cwd=str(images_repository), stdin=subprocess.DEVNULL,
+            env=env, start_new_session=True, check=False,
+        )
 
-    return ImagingResult(
-        command=command,
-        executed=True,
-        returncode=completed.returncode,
-        error=None if completed.returncode == 0 else f"ocs-sr a renvoye le code {completed.returncode}",
-    )
+        if progress_callback is not None:
+            progress_callback(1.0 if completed.returncode == 0 else None)
+
+        return ImagingResult(
+            command=command,
+            executed=True,
+            returncode=completed.returncode,
+            error=None if completed.returncode == 0 else f"ocs-sr a renvoye le code {completed.returncode}",
+        )
+    finally:
+        _unmount_partimag()
 
 
 @dataclass

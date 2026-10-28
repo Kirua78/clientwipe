@@ -23,23 +23,34 @@ def test_restore_golden_image_fails_cleanly_without_ocs_sr(tmp_path, monkeypatch
     assert "ocs-sr" in result.error
 
 
+def _make_fake_run(ocs_sr_returncode, calls=None):
+    """subprocess.run() is now called for three different things inside
+    restore_golden_image(): clearing/creating the /home/partimag bind
+    mount, running ocs-sr itself, and unmounting it again afterwards. This
+    dispatches on the command name so a single mock can stand in for all
+    three, always succeeding except for the ocs-sr call itself, whose
+    returncode is configurable.
+    """
+    def fake_run(command, cwd=None, stdin=None, env=None, start_new_session=False, check=False, capture_output=False, text=False):
+        if command[0] in ("mount", "umount"):
+            return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        if calls is not None:
+            calls["command"] = command
+            calls["cwd"] = cwd
+            calls["stdin"] = stdin
+            calls["env"] = env
+            calls["start_new_session"] = start_new_session
+        return type("R", (), {"returncode": ocs_sr_returncode})()
+
+    return fake_run
+
+
 def test_restore_golden_image_executes_when_confirmed(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
+    monkeypatch.setattr(imaging, "_PARTIMAG", tmp_path / "partimag")
 
     calls = {}
-
-    class FakeCompleted:
-        returncode = 0
-
-    def fake_run(command, cwd=None, stdin=None, env=None, start_new_session=False, check=False):
-        calls["command"] = command
-        calls["cwd"] = cwd
-        calls["stdin"] = stdin
-        calls["env"] = env
-        calls["start_new_session"] = start_new_session
-        return FakeCompleted()
-
-    monkeypatch.setattr(imaging.subprocess, "run", fake_run)
+    monkeypatch.setattr(imaging.subprocess, "run", _make_fake_run(0, calls))
 
     result = imaging.restore_golden_image("golden-kali", "/dev/sda", tmp_path, dry_run=False)
 
@@ -60,12 +71,61 @@ def test_restore_golden_image_executes_when_confirmed(tmp_path, monkeypatch):
     assert calls["start_new_session"] is True
 
 
+def test_restore_golden_image_binds_images_repository_onto_partimag(tmp_path, monkeypatch):
+    # Regression test: ocs-sr hardcodes /home/partimag as its images
+    # repository and ignores cwd entirely, refusing outright
+    # ("Please make sure your /home/partimag is a directory!!!") without
+    # this, independent of every other fix around it.
+    monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
+    partimag = tmp_path / "partimag"
+    monkeypatch.setattr(imaging, "_PARTIMAG", partimag)
+
+    mount_calls = []
+
+    def fake_run(command, cwd=None, stdin=None, env=None, start_new_session=False, check=False, capture_output=False, text=False):
+        if command[0] in ("mount", "umount"):
+            mount_calls.append(command)
+            return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        return type("R", (), {"returncode": 0})()
+
+    monkeypatch.setattr(imaging.subprocess, "run", fake_run)
+
+    result = imaging.restore_golden_image("golden-kali", "/dev/sda", tmp_path / "repo", dry_run=False)
+
+    assert result.executed is True
+    assert partimag.is_dir()
+    assert mount_calls[0] == ["umount", str(partimag)]
+    assert mount_calls[1] == ["mount", "--bind", str(tmp_path / "repo"), str(partimag)]
+    assert mount_calls[-1] == ["umount", str(partimag)]
+
+
+def test_restore_golden_image_fails_cleanly_when_partimag_mount_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
+    monkeypatch.setattr(imaging, "_PARTIMAG", tmp_path / "partimag")
+
+    ocs_sr_calls = []
+
+    def fake_run(command, cwd=None, stdin=None, env=None, start_new_session=False, check=False, capture_output=False, text=False):
+        if command[0] == "umount":
+            return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        if command[0] == "mount":
+            return type("R", (), {"returncode": 1, "stdout": "", "stderr": "Device or resource busy"})()
+        ocs_sr_calls.append(command)
+        return type("R", (), {"returncode": 0})()
+
+    monkeypatch.setattr(imaging.subprocess, "run", fake_run)
+
+    result = imaging.restore_golden_image("golden-kali", "/dev/sda", tmp_path, dry_run=False)
+
+    assert result.executed is False
+    assert "Device or resource busy" in result.error
+    assert ocs_sr_calls == []
+
+
 def test_restore_golden_image_reports_error_on_nonzero_returncode(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
-    monkeypatch.setattr(
-        imaging.subprocess, "run",
-        lambda command, cwd=None, stdin=None, env=None, start_new_session=False, check=False: type("R", (), {"returncode": 1})(),
-    )
+    monkeypatch.setattr(imaging, "_PARTIMAG", tmp_path / "partimag")
+    monkeypatch.setattr(imaging.subprocess, "run", _make_fake_run(1))
 
     result = imaging.restore_golden_image("golden-kali", "/dev/sda", tmp_path, dry_run=False)
 
@@ -76,10 +136,8 @@ def test_restore_golden_image_reports_error_on_nonzero_returncode(tmp_path, monk
 
 def test_restore_golden_image_reports_start_and_success(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
-    monkeypatch.setattr(
-        imaging.subprocess, "run",
-        lambda command, cwd=None, stdin=None, env=None, start_new_session=False, check=False: type("R", (), {"returncode": 0})(),
-    )
+    monkeypatch.setattr(imaging, "_PARTIMAG", tmp_path / "partimag")
+    monkeypatch.setattr(imaging.subprocess, "run", _make_fake_run(0))
 
     fractions = []
     result = imaging.restore_golden_image(
@@ -93,10 +151,8 @@ def test_restore_golden_image_reports_start_and_success(tmp_path, monkeypatch):
 
 def test_restore_golden_image_reports_start_and_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(imaging.shutil, "which", lambda name: "/usr/sbin/ocs-sr")
-    monkeypatch.setattr(
-        imaging.subprocess, "run",
-        lambda command, cwd=None, stdin=None, env=None, start_new_session=False, check=False: type("R", (), {"returncode": 1})(),
-    )
+    monkeypatch.setattr(imaging, "_PARTIMAG", tmp_path / "partimag")
+    monkeypatch.setattr(imaging.subprocess, "run", _make_fake_run(1))
 
     fractions = []
     result = imaging.restore_golden_image(
