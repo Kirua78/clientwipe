@@ -215,23 +215,42 @@ class LiveWipeGuiApp:
         style = ttk.Style(self.root)
         style.theme_use("clam")
 
+        # borderwidth=0 (the original setting here) left no room for a
+        # focus ring to ever render at all, on top of clam's default focus
+        # indicator not standing out against this palette anyway. Every
+        # button now reserves a 3px border, invisible (same color as its
+        # own background) until focused, then switched to bright white:
+        # found in testing to be the only way an operator could actually
+        # tell which button Tab had landed on.
         style.configure(
             "Primary.TButton", background=COLOR_ACCENT, foreground=COLOR_ACCENT_TEXT,
-            font=(FONT_MONO, 14, "bold"), borderwidth=0, padding=(28, 14),
+            font=(FONT_MONO, 14, "bold"), borderwidth=3, bordercolor=COLOR_ACCENT, padding=(26, 12),
         )
-        style.map("Primary.TButton", background=[("active", COLOR_ACCENT_DARK)])
+        style.map(
+            "Primary.TButton",
+            background=[("active", COLOR_ACCENT_DARK)],
+            bordercolor=[("focus", "#ffffff")],
+        )
 
         style.configure(
             "Danger.TButton", background=COLOR_DANGER, foreground="black",
-            font=(FONT_MONO, 14, "bold"), borderwidth=0, padding=(28, 14),
+            font=(FONT_MONO, 14, "bold"), borderwidth=3, bordercolor=COLOR_DANGER, padding=(26, 12),
         )
-        style.map("Danger.TButton", background=[("active", COLOR_DANGER_DARK)])
+        style.map(
+            "Danger.TButton",
+            background=[("active", COLOR_DANGER_DARK)],
+            bordercolor=[("focus", "#ffffff")],
+        )
 
         style.configure(
             "Secondary.TButton", background=COLOR_NEUTRAL, foreground=COLOR_ACCENT,
-            font=(FONT_MONO, 14, "bold"), borderwidth=1, bordercolor=COLOR_ACCENT, padding=(28, 14),
+            font=(FONT_MONO, 14, "bold"), borderwidth=3, bordercolor=COLOR_NEUTRAL, padding=(26, 12),
         )
-        style.map("Secondary.TButton", background=[("active", COLOR_NEUTRAL_DARK)])
+        style.map(
+            "Secondary.TButton",
+            background=[("active", COLOR_NEUTRAL_DARK)],
+            bordercolor=[("focus", "#ffffff")],
+        )
 
         style.configure(
             "Accent.Horizontal.TProgressbar", troughcolor=COLOR_CARD,
