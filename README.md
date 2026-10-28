@@ -335,6 +335,83 @@ de la meme facon :
   interaction), une infrastructure hors du perimetre de ce depot, couverte
   uniquement par des tests unitaires avec `subprocess`/`grub-reboot` simules.
 
+## Construire ou mettre a jour la golden master (cle autonome)
+
+Le mode cle autonome (`clientwipe live-wipe` / `live-wipe-gui`) restaure une
+image Clonezilla ("golden master") preparee a l'avance. Procedure validee en
+conditions reelles pour construire ou mettre a jour cette image :
+
+1. **Installer Kali** sur un disque cible (VM jetable ou disque de rechange).
+   Pour un chiffrement complet du disque, choisir "Assiste - utiliser tout un
+   disque avec LVM chiffre" dans l'installeur.
+
+2. **Ajouter une vraie partition EFI** si l'installation a ete faite en BIOS
+   classique/MBR (cas frequent pour une VM creee sans UEFI/OVMF explicite) et
+   que la machine cible reelle est en UEFI pur, sans support Legacy/CSM :
+
+   ```
+   # Convertir la table de partitions MBR en GPT (preserve les partitions
+   # existantes), puis creer une nouvelle partition EFI dans l'espace libre
+   sudo gdisk /dev/<disque>
+   #   p  -> verifier les partitions existantes
+   #   n  -> nouvelle partition, taille +300M, type ef00 (EFI system partition)
+   #   w  -> ecrire les changements
+
+   sudo mkfs.fat -F32 /dev/<nouvelle-partition-efi>
+
+   # Monter et chrooter pour installer le chargeur de demarrage UEFI
+   sudo mkdir -p /mnt/target
+   sudo mount /dev/<partition-racine> /mnt/target   # cryptsetup luksOpen + vgchange -ay avant si LUKS/LVM
+   sudo mount /dev/<partition-boot> /mnt/target/boot
+   sudo mkdir -p /mnt/target/boot/efi
+   sudo mount /dev/<nouvelle-partition-efi> /mnt/target/boot/efi
+   sudo mount --bind /dev /mnt/target/dev
+   sudo mount --bind /proc /mnt/target/proc
+   sudo mount --bind /sys /mnt/target/sys
+   sudo chroot /mnt/target
+
+   # Dans le chroot :
+   apt update && apt install -y grub-efi-amd64
+   grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Kali --removable
+   update-grub
+   echo "UUID=<uuid-partition-efi> /boot/efi vfat umask=0077 0 1" >> /etc/fstab   # voir blkid
+   exit
+
+   # Demonter proprement (ordre inverse), puis tester que le disque demarre
+   # seul (sans Cle A) sur la machine reelle avant de continuer.
+   ```
+
+3. **Personnaliser** : ajouter les utilisateurs sudo et les outils voulus
+   directement dans cette session (`adduser`, `usermod -aG sudo`,
+   `apt install`), puisque c'est exactement cet etat qui sera capture.
+
+4. **Capturer l'image avec Clonezilla**, depuis Cle A (pas depuis la machine
+   qu'on vient de personnaliser) :
+
+   ```
+   sudo mkdir -p /mnt/images
+   sudo mount /dev/<partition-depot-images> /mnt/images   # ex: sda4 sur Cle A
+   sudo mkdir -p /home/partimag
+   sudo mount --bind /mnt/images /home/partimag
+   sudo ocs-sr savedisk <NomDeLImage> <disque>             # ex: KaliState0-efi nvme0n1
+   ```
+
+   Repondre aux questions interactives de Clonezilla au fur et a mesure. Le
+   message final "Des partitions endommagees ont ete trouvees, ou bien
+   certaines ne sont pas verifiables" est attendu si l'image contient une
+   partition EFI FAT32 (sauvegardee via `partimage`, que l'outil de
+   verification ne sait pas auditer) : ce n'est pas une vraie corruption tant
+   que les autres partitions sont explicitement dites restaurables.
+
+5. **Pointer l'outil vers la nouvelle image** : mettre a jour
+   `DEFAULT_IMAGE_NAME` dans `clientwipe/gui_live_wipe.py` (et le texte
+   d'aide correspondant dans `clientwipe/cli.py`), committer, pousser, et
+   deployer sur Cle A (`git pull`).
+
+6. **Valider de bout en bout** : lancer un `clientwipe live-wipe-gui` complet
+   contre un disque de test, et confirmer qu'il redemarre seul (sans Cle A)
+   une fois termine.
+
 ## Configuration
 
 Un seul fichier YAML pilote les deux modes (`config/sanitize_targets.example.yaml`
