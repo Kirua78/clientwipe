@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from .bitlocker import detect_bitlocker
 from .disk_wipe import DeviceWipeResult, wipe_device
 from .imaging import ImagingResult, restore_golden_image
 from .inventory import ToolInventoryResult, inventory_installed_packages
 from .luks import LuksEraseResult, LuksHeaderBackupResult, backup_luks_header, detect_luks, erase_luks_key
+
+# step is one of "detection", "effacement", "reimagage"; fraction is 0.0-1.0
+# or None when progress cannot be estimated at that instant; detail is a
+# short human-readable status string, often empty.
+LiveWipeProgressCallback = Callable[[str, Optional[float], str], None]
 
 
 @dataclass
@@ -59,6 +64,7 @@ def live_wipe(
     inventory_output_dir: Optional[Path] = None,
     inventory_mount_point: Path = Path("/mnt/clientwipe-inventory"),
     dry_run: bool = True,
+    progress_callback: Optional[LiveWipeProgressCallback] = None,
 ) -> LiveWipeReport:
     """Erase and reimage `device` immediately, from within a live boot
     environment running ON the trusted USB key itself (see the
@@ -83,8 +89,22 @@ def live_wipe(
     version) are dumped to a JSON file there, confirming the restored system
     matches the expected golden-image baseline. See inventory.py; this is
     informational only and does not affect LiveWipeReport.passed.
+
+    `progress_callback`, when given, is called throughout with
+    (step, fraction, detail): "detection" and "effacement" (erasure) and
+    "reimagage" (restore), a fraction between 0.0 and 1.0 or None when it
+    cannot be estimated at that instant, and a short status string. Meant
+    for `clientwipe live-wipe-gui` to drive a per-step progress display;
+    the CLI leaves it unset, so this runs exactly as before.
     """
+
+    def _notify(step: str, fraction: Optional[float], detail: str = "") -> None:
+        if progress_callback is not None:
+            progress_callback(step, fraction, detail)
+
+    _notify("detection", None, "Detection du chiffrement...")
     detection = detect_luks(device)
+    _notify("detection", 1.0, "Detection terminee")
 
     header_backup: Optional[LuksHeaderBackupResult] = None
     luks_erase: Optional[LuksEraseResult] = None
@@ -92,6 +112,7 @@ def live_wipe(
     bitlocker_detected = False
 
     if detection.is_luks:
+        _notify("effacement", None, "Destruction de la cle LUKS...")
         backup_ok = True
         if header_backup_path is not None:
             header_backup = backup_luks_header(device, header_backup_path, dry_run=dry_run)
@@ -99,11 +120,22 @@ def live_wipe(
 
         if backup_ok:
             luks_erase = erase_luks_key(device, dry_run=dry_run)
+        _notify("effacement", 1.0, "Cle LUKS detruite")
     else:
         bitlocker_detected = detect_bitlocker(device).is_bitlocker
-        device_wipe = wipe_device(device, passes=fallback_wipe_passes, dry_run=dry_run)
+        _notify("effacement", 0.0, "Effacement en cours...")
+        device_wipe = wipe_device(
+            device, passes=fallback_wipe_passes, dry_run=dry_run,
+            progress_callback=(lambda f: _notify("effacement", f, "Effacement en cours...")) if progress_callback else None,
+        )
+        _notify("effacement", 1.0, "Effacement termine")
 
-    imaging_result = restore_golden_image(image_name, device, images_repository, dry_run=dry_run)
+    _notify("reimagage", 0.0, "Reimagage en cours...")
+    imaging_result = restore_golden_image(
+        image_name, device, images_repository, dry_run=dry_run,
+        progress_callback=(lambda f: _notify("reimagage", f, "Reimagage en cours...")) if progress_callback else None,
+    )
+    _notify("reimagage", 1.0 if imaging_result.returncode == 0 else None, "Reimagage termine")
 
     tool_inventory: Optional[ToolInventoryResult] = None
     if inventory_output_dir is not None and imaging_result.executed and imaging_result.returncode == 0:

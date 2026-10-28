@@ -15,6 +15,12 @@ DEFAULT_MOUNT_POINT = Path("/mnt/clientwipe-gui-images")
 DEFAULT_OUT_DIR = Path("/mnt/clientwipe-gui-images/certificates")
 DEFAULT_FALLBACK_WIPE_PASSES = 1
 
+STEPS = [
+    ("detection", "1. Detection du chiffrement"),
+    ("effacement", "2. Effacement"),
+    ("reimagage", "3. Reimagage"),
+]
+
 COLOR_BG = "#000000"
 COLOR_CARD = "#060a07"
 COLOR_BORDER = "#00ff9f"
@@ -379,21 +385,31 @@ class LiveWipeGuiApp:
         self._header("Operation en cours", "Ne pas eteindre la machine ni debrancher le disque.")
 
         card = self._card()
-        tk.Label(card, text="[ EN COURS ]", font=(FONT_MONO, 28, "bold"), fg=COLOR_ACCENT, bg=COLOR_CARD).pack(pady=(40, 10))
-        tk.Label(
-            card, text="Detection du chiffrement, effacement, reimagage...",
-            font=(FONT_MONO, 14), fg=COLOR_SUBTEXT, bg=COLOR_CARD,
-        ).pack(padx=50, pady=(0, 20))
+        self.step_rows = {}
+        for step_key, step_label in STEPS:
+            row = tk.Frame(card, bg=COLOR_CARD)
+            row.pack(fill="x", padx=50, pady=16)
 
-        self.progress = ttk.Progressbar(
-            card, mode="indeterminate", length=420, style="Accent.Horizontal.TProgressbar",
-        )
-        self.progress.pack(pady=(0, 40))
-        self.progress.start(15)
+            header_row = tk.Frame(row, bg=COLOR_CARD)
+            header_row.pack(fill="x")
+            name_label = tk.Label(
+                header_row, text=step_label, font=(FONT_MONO, 14, "bold"),
+                fg=COLOR_SUBTEXT, bg=COLOR_CARD, anchor="w",
+            )
+            name_label.pack(side="left")
+            percent_label = tk.Label(
+                header_row, text="...", font=(FONT_MONO, 14), fg=COLOR_SUBTEXT, bg=COLOR_CARD,
+            )
+            percent_label.pack(side="right")
+
+            progress = ttk.Progressbar(row, mode="determinate", length=560, style="Accent.Horizontal.TProgressbar")
+            progress.pack(fill="x", pady=(8, 0))
+
+            self.step_rows[step_key] = {"name": name_label, "percent": percent_label, "progress": progress, "mode": "idle"}
 
         thread = threading.Thread(target=self._run_wipe, daemon=True)
         thread.start()
-        self.root.after(500, self._poll_result)
+        self.root.after(200, self._poll_queue)
 
     def _run_wipe(self) -> None:
         images_repository = find_images_repository(self.image_name, self.mount_point, exclude_device=self.selected_device)
@@ -401,28 +417,59 @@ class LiveWipeGuiApp:
             self.result_queue.put(("error", "Golden master introuvable sur les disques disponibles."))
             return
 
+        def on_progress(step: str, fraction: Optional[float], detail: str) -> None:
+            self.result_queue.put(("progress", step, fraction, detail))
+
         report = live_wipe(
             self.selected_device,
             self.image_name,
             images_repository,
             fallback_wipe_passes=self.fallback_wipe_passes,
             dry_run=False,
+            progress_callback=on_progress,
         )
         certificate = generate_live_wipe_certificate(report, self.out_dir)
         self.result_queue.put(("done", report, certificate))
 
-    def _poll_result(self) -> None:
-        try:
-            outcome = self.result_queue.get_nowait()
-        except queue.Empty:
-            self.root.after(500, self._poll_result)
+    def _update_step(self, step: str, fraction: Optional[float]) -> None:
+        widgets = self.step_rows.get(step)
+        if widgets is None:
             return
 
-        self.progress.stop()
-        if outcome[0] == "error":
-            self._show_error(outcome[1])
+        widgets["name"].configure(fg=COLOR_SUCCESS if fraction == 1.0 else COLOR_ACCENT)
+
+        if fraction is None:
+            if widgets["mode"] != "indeterminate":
+                widgets["progress"].configure(mode="indeterminate")
+                widgets["progress"].start(15)
+                widgets["mode"] = "indeterminate"
+            widgets["percent"].configure(text="...")
         else:
-            self._show_result(outcome[1], outcome[2])
+            if widgets["mode"] == "indeterminate":
+                widgets["progress"].stop()
+            widgets["progress"].configure(mode="determinate")
+            widgets["progress"]["value"] = fraction * 100
+            widgets["mode"] = "determinate"
+            widgets["percent"].configure(text=f"{round(fraction * 100)}%")
+
+    def _poll_queue(self) -> None:
+        try:
+            while True:
+                item = self.result_queue.get_nowait()
+                if item[0] == "progress":
+                    self._update_step(item[1], item[2])
+                else:
+                    self._finish(item)
+                    return
+        except queue.Empty:
+            pass
+        self.root.after(200, self._poll_queue)
+
+    def _finish(self, item: tuple) -> None:
+        if item[0] == "error":
+            self._show_error(item[1])
+        else:
+            self._show_result(item[1], item[2])
 
     def _show_error(self, message: str) -> None:
         import tkinter as tk

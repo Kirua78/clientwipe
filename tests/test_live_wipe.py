@@ -17,11 +17,11 @@ def test_live_wipe_reimages_directly_without_luks(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "wipe_device",
-        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
+        lambda device, passes, dry_run, progress_callback=None: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run: ImagingResult(
+        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(
             command=["ocs-sr", "restoredisk", image_name, device], executed=True, returncode=0,
         ),
     )
@@ -47,11 +47,11 @@ def test_live_wipe_reports_bitlocker_on_windows_target(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "wipe_device",
-        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
+        lambda device, passes, dry_run, progress_callback=None: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run: ImagingResult(
+        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(
             command=["ocs-sr", "restoredisk", image_name, device], executed=True, returncode=0,
         ),
     )
@@ -75,11 +75,11 @@ def test_live_wipe_fails_when_fallback_device_wipe_fails(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "wipe_device",
-        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=False, error="boom"),
+        lambda device, passes, dry_run, progress_callback=None: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=False, error="boom"),
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
     )
 
     report = live_wipe_module.live_wipe("/dev/sda", "golden-kali", tmp_path, dry_run=False)
@@ -98,11 +98,11 @@ def test_live_wipe_runs_inventory_when_output_dir_given_and_imaging_succeeds(mon
     )
     monkeypatch.setattr(
         live_wipe_module, "wipe_device",
-        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
+        lambda device, passes, dry_run, progress_callback=None: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
     )
     inventory_calls = []
     monkeypatch.setattr(
@@ -132,11 +132,11 @@ def test_live_wipe_skips_inventory_when_imaging_fails(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "wipe_device",
-        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
+        lambda device, passes, dry_run, progress_callback=None: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run: ImagingResult(command=["ocs-sr"], executed=True, returncode=1),
+        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=1),
     )
     inventory_calls = []
     monkeypatch.setattr(
@@ -168,7 +168,7 @@ def test_live_wipe_erases_luks_before_reimaging(monkeypatch, tmp_path):
     imaging_calls = []
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run: imaging_calls.append(device) or
+        lambda image_name, device, images_repository, dry_run, progress_callback=None: imaging_calls.append(device) or
         ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
     )
 
@@ -198,7 +198,7 @@ def test_live_wipe_skips_erase_when_header_backup_fails(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
+        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=0),
     )
 
     report = live_wipe_module.live_wipe(
@@ -208,6 +208,48 @@ def test_live_wipe_skips_erase_when_header_backup_fails(monkeypatch, tmp_path):
     assert erase_calls == []
     assert report.luks_erase is None
     assert report.passed is False
+
+
+def test_live_wipe_reports_progress_through_each_phase(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        live_wipe_module, "detect_luks",
+        lambda device: LuksDetectionResult(device=device, is_luks=False),
+    )
+    monkeypatch.setattr(
+        live_wipe_module, "detect_bitlocker",
+        lambda device: BitlockerDetectionResult(device=device, is_bitlocker=False),
+    )
+
+    def fake_wipe_device(device, passes, dry_run, progress_callback=None):
+        if progress_callback:
+            progress_callback(0.5)
+        return DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True)
+
+    monkeypatch.setattr(live_wipe_module, "wipe_device", fake_wipe_device)
+
+    def fake_restore(image_name, device, images_repository, dry_run, progress_callback=None):
+        if progress_callback:
+            progress_callback(0.75)
+        return ImagingResult(command=["ocs-sr"], executed=True, returncode=0)
+
+    monkeypatch.setattr(live_wipe_module, "restore_golden_image", fake_restore)
+
+    events = []
+    live_wipe_module.live_wipe(
+        "/dev/sda", "golden-kali", tmp_path, dry_run=False,
+        progress_callback=lambda step, fraction, detail: events.append((step, fraction)),
+    )
+
+    assert events == [
+        ("detection", None),
+        ("detection", 1.0),
+        ("effacement", 0.0),
+        ("effacement", 0.5),
+        ("effacement", 1.0),
+        ("reimagage", 0.0),
+        ("reimagage", 0.75),
+        ("reimagage", 1.0),
+    ]
 
 
 def test_live_wipe_fails_when_imaging_fails(monkeypatch, tmp_path):
@@ -221,11 +263,11 @@ def test_live_wipe_fails_when_imaging_fails(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         live_wipe_module, "wipe_device",
-        lambda device, passes, dry_run: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
+        lambda device, passes, dry_run, progress_callback=None: DeviceWipeResult(device=device, passes=passes, method="shred", attempted=True, completed=True),
     )
     monkeypatch.setattr(
         live_wipe_module, "restore_golden_image",
-        lambda image_name, device, images_repository, dry_run: ImagingResult(command=["ocs-sr"], executed=True, returncode=1),
+        lambda image_name, device, images_repository, dry_run, progress_callback=None: ImagingResult(command=["ocs-sr"], executed=True, returncode=1),
     )
 
     report = live_wipe_module.live_wipe("/dev/sda", "golden-kali", tmp_path, dry_run=False)
