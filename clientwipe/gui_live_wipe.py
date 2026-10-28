@@ -341,7 +341,7 @@ class LiveWipeGuiApp:
             tree.selection_set(children[0])
             tree.focus(children[0])
 
-        def on_next() -> None:
+        def on_next(event=None) -> None:
             selection = tree.selection()
             if not selection:
                 return
@@ -354,6 +354,13 @@ class LiveWipeGuiApp:
             actions, text="[ QUITTER ]", style="Secondary.TButton", command=self.root.destroy,
         ).pack(side="left", padx=10)
         ttk.Button(actions, text="[ SUIVANT ]", style="Primary.TButton", command=on_next).pack(side="left", padx=10)
+
+        # Fleches haut/bas deja gerees nativement par le Treeview en mode
+        # "browse" ; Entree valide la selection sans avoir a tabuler
+        # jusqu'au bouton, Echap quitte directement.
+        tree.bind("<Return>", on_next)
+        tree.focus_set()
+        self.root.bind("<Escape>", lambda event: self.root.destroy())
 
     def _show_confirmation(self) -> None:
         import tkinter as tk
@@ -379,12 +386,18 @@ class LiveWipeGuiApp:
 
         buttons = tk.Frame(self.container, bg=COLOR_BG)
         buttons.pack(pady=30)
-        ttk.Button(
+        cancel_button = ttk.Button(
             buttons, text="[ ANNULER ]", style="Secondary.TButton", command=self._show_device_selection,
-        ).pack(side="left", padx=10)
+        )
+        cancel_button.pack(side="left", padx=10)
         ttk.Button(
             buttons, text="[ CONFIRMER ET EFFACER ]", style="Danger.TButton", command=self._start_wipe,
         ).pack(side="left", padx=10)
+
+        # Focus par defaut sur Annuler, jamais sur l'action destructive :
+        # Entree/Echap sans navigation explicite au clavier n'efface rien.
+        cancel_button.focus_set()
+        self.root.bind("<Escape>", lambda event: self._show_device_selection())
 
     def _start_wipe(self) -> None:
         import tkinter as tk
@@ -392,6 +405,13 @@ class LiveWipeGuiApp:
 
         self._clear()
         self._header("Operation en cours", "Ne pas eteindre la machine ni debrancher le disque.")
+
+        # Aucune sortie possible au clavier pendant l'operation : aucun
+        # bouton Quitter n'est propose non plus sur cet ecran (voir
+        # _exit_button), fermer la fenetre interromprait l'effacement ou
+        # le reimagage en plein milieu.
+        self.root.unbind("<Escape>")
+        self.root.unbind("<Return>")
 
         card = self._card()
         self.step_rows = {}
@@ -531,7 +551,13 @@ class LiveWipeGuiApp:
     def _exit_button(self) -> None:
         from tkinter import ttk
 
-        ttk.Button(self.container, text="[ QUITTER ]", style="Secondary.TButton", command=self.root.destroy).pack(pady=30)
+        self.exit_button = ttk.Button(
+            self.container, text="[ QUITTER ]", style="Secondary.TButton", command=self.root.destroy,
+        )
+        self.exit_button.pack(pady=30)
+        self.exit_button.focus_set()
+        self.root.bind("<Return>", lambda event: self.root.destroy())
+        self.root.bind("<Escape>", lambda event: self.root.destroy())
 
 
 def run_gui(
