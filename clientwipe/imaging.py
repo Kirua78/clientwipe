@@ -240,7 +240,15 @@ def restore_golden_image(
         )
 
     try:
-        env = {**os.environ, "ocs_batch_mode": "1"}
+        # TERM is normally unset in this process's own environment: the GUI
+        # is launched automatically at session start, not from a terminal.
+        # partclone's ncurses-based progress UI (used for filesystem-aware
+        # restores, e.g. /boot's ext4, unlike the raw dd-mode path LUKS/LVM
+        # partitions take) needs a real value to initialize, and failed
+        # intermittently on real hardware without one ("partclone ncurses
+        # initial error"). "linux" is always a safe, widely recognized
+        # value regardless of what terminal (if any) actually started this.
+        env = {**os.environ, "ocs_batch_mode": "1", "TERM": os.environ.get("TERM") or "linux"}
 
         output_log_hint = ""
         if progress_callback is None:
